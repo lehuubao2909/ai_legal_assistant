@@ -43,6 +43,8 @@ data/chroma_db/
 
 # ===== Generated pipeline artifacts =====
 data/corpus_articles.jsonl
+data/corpus_emb.npy
+data/corpus_emb_ids.json
 results.json
 submission.zip
 backend/static/generated_docs/*

@@ -5,8 +5,9 @@
 sentence-transformers>=3.0.0
 torch>=2.2.0
 
-# Vector store + sparse retrieval
-chromadb>=0.5.0
+# Vector store: numpy brute-force cosine (corpus_emb.npy) — corpus nhỏ (~15MB float32),
+# không cần ChromaDB/FAISS. numpy đi kèm sentence-transformers, ghi rõ để chắc chắn.
+numpy>=1.24
 rank-bm25>=0.2.2
 
 # HuggingFace corpus datasets (tmquan/vbpl-vn, phapdien, anle)

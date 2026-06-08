@@ -57,11 +57,18 @@ class LocalLLMClient:
         # Exact list of articles the answer MUST cite (authoritative from retrieval).
         must_cite = ", ".join(sorted({d.get("article", "") for d in contexts if d.get("article")}))
 
+        # Zero-shot grounded prompt (few-shot làm giảm chất lượng ở LLM <14B — VLQA 2025).
+        # Nhắm thẳng 5 tiêu chí chấm QA + ép trích dẫn (StrictCitations chống bịa).
         system = (
-            "Bạn là trợ lý pháp lý AI cho doanh nghiệp SME Việt Nam. Trả lời CHÍNH XÁC, "
-            "NGẮN GỌN, chỉ dựa trên CƠ SỞ PHÁP LÝ được cung cấp. Tuyệt đối không bịa điều luật.\n"
-            "BẮT BUỘC: trong câu trả lời phải nêu rõ từng số Điều (ví dụ 'Điều 125', 'Điều 36') "
-            "và tên văn bản tương ứng — hệ thống chấm điểm sẽ trích xuất các 'Điều X' từ câu trả lời. "
+            "Bạn là trợ lý pháp lý AI cho doanh nghiệp SME Việt Nam. Trả lời câu hỏi DỰA HOÀN TOÀN "
+            "trên CƠ SỞ PHÁP LÝ được cung cấp; TUYỆT ĐỐI không bịa điều luật hay nội dung ngoài căn cứ.\n"
+            "Tiêu chí câu trả lời tốt:\n"
+            "- CHÍNH XÁC: đúng quy định, lấy số liệu/điều kiện/thời hạn từ chính điều luật.\n"
+            "- ĐẦY ĐỦ: bao quát các khía cạnh liên quan của câu hỏi.\n"
+            "- THỰC TIỄN: nêu rõ điều kiện/cách áp dụng cụ thể.\n"
+            "- RÕ RÀNG: ngắn gọn, dễ hiểu cho người không chuyên.\n"
+            "BẮT BUỘC: với mỗi căn cứ phải nêu rõ số Điều + tên văn bản (vd 'theo Điều 125 Bộ luật Lao động') "
+            "— hệ thống chấm điểm trích xuất các 'Điều X' từ câu trả lời. "
             "Nếu căn cứ không đủ, nói rõ và khuyến nghị tham vấn luật sư."
         )
         user = (

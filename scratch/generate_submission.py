@@ -71,9 +71,11 @@ def main():
     ap.add_argument("--top-k", type=int, default=5)
     ap.add_argument("--no-llm", action="store_true", help="skip Ollama; deterministic answers")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--questions", default=cfg.TEST_QUESTIONS,
+                    help="path to questions json (default: 20 mock; pass the 2000-question file for real run)")
     args = ap.parse_args()
 
-    with open(cfg.TEST_QUESTIONS, encoding="utf-8") as f:
+    with open(args.questions, encoding="utf-8") as f:
         questions = json.load(f)
     if args.limit:
         questions = questions[:args.limit]

@@ -1,17 +1,17 @@
-"""Offline hybrid retrieval engine for the competition pipeline.
+"""Offline hybrid retrieval — numpy cosine (corpus_emb.npy) + BM25 → RRF → rerank → cutoff.
+
+No ChromaDB: corpus is small (~15MB float32) so numpy brute-force is instant AND the
+embeddings file is trivially incremental (embed_corpus.py appends new rows). Same backend
+local ↔ Colab notebook.
 
 Pipeline:  dense (Vietnamese_Embedding, raw query) ‖ sparse (BM25)
-        →  RRF fusion  →  cross-encoder rerank  →  top-K Điều.
-
-Temporal filtering / legislative-hierarchy re-sorting / slang expansion were
-removed: they hurt F2 recall and add no scoring value for this task (KISS).
+        →  RRF fusion  →  cross-encoder rerank  →  score-threshold cutoff.
 """
+import json
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 import numpy as np
-import chromadb
-import torch
 from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
 
@@ -36,81 +36,83 @@ def _tokenize(text: str) -> List[str]:
 class LocalLegalRAGEngine:
     def __init__(self, use_reranker: bool = True, candidate_k: int = 50):
         self.candidate_k = candidate_k
-        self.client = chromadb.PersistentClient(path=cfg.CHROMA_PATH)
-        self.collection = self.client.get_or_create_collection(
-            name=cfg.CHROMA_COLLECTION, metadata={"hnsw:space": "cosine"}
+
+        # Load corpus text + precomputed embeddings (from embed_corpus.py)
+        self.corpus: List[Dict[str, Any]] = []
+        with open(cfg.CORPUS_JSONL, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and json.loads(line).get("doc_number"):
+                    self.corpus.append(json.loads(line))
+        self.docs_text = [f"{r['title']}\n{r['text']}" for r in self.corpus]
+        self.corpus_emb = np.load(cfg.CORPUS_EMB).astype("float32")
+        assert len(self.corpus_emb) == len(self.corpus), (
+            f"corpus_emb ({len(self.corpus_emb)}) != corpus ({len(self.corpus)}) "
+            f"— chạy lại: python embed_corpus.py"
         )
-        self.device = "mps" if torch.backends.mps.is_available() else "cpu"
+        print(f"Loaded {len(self.corpus)} articles + embeddings {self.corpus_emb.shape}")
+
+        self.device = cfg.get_device()
         print(f"Loading embedding model '{cfg.EMBEDDING_MODEL}' on {self.device} ...")
         self.model = SentenceTransformer(cfg.EMBEDDING_MODEL, device=self.device)
+        self.model.max_seq_length = cfg.EMBED_MAX_SEQ_LEN
 
         self.reranker = LocalReranker() if use_reranker else None
+        print(f"BM25 indexing {len(self.docs_text)} articles (pyvi={'on' if _HAS_PYVI else 'off'}) ...")
+        self.bm25 = BM25Okapi([_tokenize(t) for t in self.docs_text])
 
-        self.bm25 = None
-        self.corpus_ids: List[str] = []
-        self.corpus_meta: List[Dict[str, Any]] = []
-        self._build_bm25()
+    def _dense(self, query: str) -> List[int]:
+        qv = self.model.encode(query, normalize_embeddings=True).astype("float32")
+        scores = self.corpus_emb @ qv               # cosine (vectors are normalized)
+        return [int(i) for i in np.argsort(scores)[::-1][:self.candidate_k]]
 
-    def _build_bm25(self):
-        count = self.collection.count()
-        if count == 0:
-            print("⚠ ChromaDB empty — run build_corpus.py + local_ingestion.py first.")
-            return
-        print(f"Building BM25 index over {count} articles ...")
-        rec = self.collection.get(include=["metadatas", "documents"])
-        self.corpus_ids = rec["ids"]
-        self.corpus_meta = rec["metadatas"]
-        self.bm25 = BM25Okapi([_tokenize(d) for d in rec["documents"]])
-        print(f"BM25 ready (pyvi={'on' if _HAS_PYVI else 'off'}).")
-
-    def _dense(self, query: str) -> List[str]:
-        vec = self.model.encode(query, normalize_embeddings=True).tolist()
-        n = min(self.candidate_k, self.collection.count())   # avoid n_results > corpus size
-        res = self.collection.query(query_embeddings=[vec], n_results=n)
-        return res.get("ids", [[]])[0]
-
-    def _sparse(self, query: str) -> List[str]:
-        if not self.bm25:
-            return []
+    def _sparse(self, query: str) -> List[int]:
         scores = self.bm25.get_scores(_tokenize(query))
-        order = np.argsort(scores)[::-1][:self.candidate_k]
-        return [self.corpus_ids[i] for i in order if scores[i] > 0.0]
+        return [int(i) for i in np.argsort(scores)[::-1][:self.candidate_k] if scores[i] > 0.0]
 
-    def retrieve(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Return top_k article metadata dicts for the query."""
-        if self.collection.count() == 0:
+    def _candidates_scored(self, query: str, pool: int = 10) -> List[Dict[str, Any]]:
+        """Dense+sparse → RRF → rerank → top `pool` deduped, each carrying rerank_score."""
+        if not self.corpus:
             return []
-        if not self.bm25 or len(self.corpus_ids) != self.collection.count():
-            self._build_bm25()
-
-        dense_ids = self._dense(query)
-        sparse_ids = self._sparse(query)
-
-        # Reciprocal Rank Fusion (k=60).
-        rrf: Dict[str, float] = {}
-        for ids in (dense_ids, sparse_ids):
-            for rank, _id in enumerate(ids):
-                rrf[_id] = rrf.get(_id, 0.0) + 1.0 / (60.0 + rank + 1)
+        rrf: Dict[int, float] = {}
+        for ids in (self._dense(query), self._sparse(query)):
+            for rank, i in enumerate(ids):
+                rrf[i] = rrf.get(i, 0.0) + 1.0 / (60.0 + rank + 1)
         if not rrf:
             return []
-
         fused = sorted(rrf, key=rrf.get, reverse=True)[:self.candidate_k]
-        id2meta = dict(zip(self.corpus_ids, self.corpus_meta))
-        candidates = [dict(id2meta[i]) for i in fused if i in id2meta]
-
-        # Cross-encoder rerank (or RRF order if disabled).
-        ranked = self.reranker.rerank(query, candidates, top_k=top_k) if self.reranker \
-            else candidates[:top_k]
-
-        # Dedup by (doc_number, article), preserve order.
+        candidates = [dict(self.corpus[i]) for i in fused]
+        ranked = (self.reranker.rerank(query, candidates, top_k=pool)
+                  if self.reranker else candidates[:pool])
         seen, out = set(), []
         for d in ranked:
-            key = (d.get("doc_number", ""), d.get("article", ""))
-            if key in seen:
-                continue
-            seen.add(key)
+            k = (d.get("doc_number", ""), d.get("article", ""))
+            if k not in seen:
+                seen.add(k)
+                out.append(d)
+        return out
+
+    @staticmethod
+    def _cutoff(ranked, top_k, min_score, keep_margin):
+        """Always keep top-1 (recall floor); keep next while score passes floor + margin; cap top_k."""
+        if not ranked:
+            return []
+        out = [ranked[0]]
+        top = ranked[0].get("rerank_score", 0.0)
+        for d in ranked[1:top_k]:
+            s = d.get("rerank_score", 0.0)
+            if min_score is not None and s < min_score:
+                break
+            if keep_margin is not None and s < top - keep_margin:
+                break
             out.append(d)
         return out
+
+    def retrieve(self, query: str, top_k: int = None) -> List[Dict[str, Any]]:
+        """Return relevant article dicts, cut by reranker-score threshold (config-driven)."""
+        top_k = top_k or cfg.RETRIEVE_TOP_K
+        ranked = self._candidates_scored(query, pool=max(top_k, 10))
+        return self._cutoff(ranked, top_k, cfg.RETRIEVE_MIN_SCORE, cfg.RETRIEVE_MARGIN)
 
 
 if __name__ == "__main__":
@@ -118,7 +120,7 @@ if __name__ == "__main__":
     q = "Người lao động tự ý bỏ việc bao nhiêu ngày thì bị sa thải?"
     print(f"\nQuery: {q}\n")
     for i, r in enumerate(eng.retrieve(q), 1):
-        score = r.get("rerank_score")
+        s = r.get("rerank_score")
+        head = f"    score={s:.3f} " if s is not None else "    "
         print(f"[{i}] {r.get('doc_number')} | {r.get('article')} | {r.get('clean_name')}")
-        print(f"    score={score:.3f} " if score is not None else "    ", end="")
-        print(r.get("title", "")[:80])
+        print(head + r.get("title", "")[:80])

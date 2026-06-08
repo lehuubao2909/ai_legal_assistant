@@ -7,7 +7,9 @@
 
 **Offline Batch Pipeline** sinh `results.json`, KHÔNG phải web app realtime.
 
-**Vì sao:** Cuộc thi chấm trên file nộp offline; mô hình đóng (Gemini/GPT) bị cấm. Bản web-app ban đầu (Google Antigravity SDK + Gemini API) **bị loại tư cách 100%** → đã pivot. Code web-app cũ (`agent.py`, `rag_engine.py`, `main.py`, `frontend/`) giữ lại làm tham khảo, **không dùng để nộp**.
+**Vì sao:** Cuộc thi chấm trên file nộp offline; mô hình đóng (Gemini/GPT) bị cấm. Bản web-app ban đầu (Google Antigravity SDK + Gemini API) **bị loại tư cách 100%** ở vòng thi → pipeline thi không dùng nó. Code web-app (`agent.py`, `rag_engine.py`, `main.py`, `frontend/`) **giữ lại cho giai đoạn sau** (làm sản phẩm web sau khi xong vòng thi), chưa sửa.
+
+**Chạy local** (Mac M4): LLM qua Ollama (`local_llm_client.py`). Embedding/reranker trên MPS.
 
 Bài toán cốt lõi = **IR + RAG**. Điểm IR (F2) tự động, chấm hàng tuần, có ngay → **ưu tiên retrieval trước**, QA sau.
 
@@ -17,8 +19,8 @@ Bài toán cốt lõi = **IR + RAG**. Điểm IR (F2) tự động, chấm hàng
 flowchart TD
     HF[HF dataset: tmquan/vbpl-vn] --> BC[build_corpus.py<br/>lọc luật SME + parse markdown→Điều]
     BC --> JL[(corpus_articles.jsonl)]
-    JL --> ING[local_ingestion.py<br/>embed v1 → ChromaDB]
-    ING --> DB[(ChromaDB<br/>vietnamese_laws)]
+    JL --> ING[embed_corpus.py<br/>embed incremental v1]
+    ING --> DB[(corpus_emb.npy<br/>float32, numpy)]
 
     Q[test_questions.json] --> RAG
     DB --> RAG[local_rag_engine.py]
@@ -41,8 +43,8 @@ flowchart TD
 | # | Giai đoạn | Module | Mô tả |
 |---|---|---|---|
 | 1 | Build corpus | `backend/build_corpus.py` | Stream `tmquan/vbpl-vn` (158k docs), lọc theo allowlist mã văn bản SME (hoặc keywords), parse `markdown` → Điều-level, ghi `data/corpus_articles.jsonl` |
-| 2 | Ingestion | `backend/local_ingestion.py` | Đọc JSONL, embed mỗi Điều bằng `Vietnamese_Embedding`, upsert ChromaDB (cosine), fail-loud nếu lỗi embed |
-| 3 | Retrieval | `backend/local_rag_engine.py` | Dense (query gốc) ‖ Sparse (BM25) → RRF → rerank → Top-K, dedup theo (mã, Điều) |
+| 2 | Embedding | `backend/embed_corpus.py` | Đọc JSONL, embed mỗi Điều bằng `Vietnamese_Embedding` → `corpus_emb.npy` (float32). **Incremental**: chỉ embed Điều mới khi chạy lại (so id) |
+| 3 | Retrieval | `backend/local_rag_engine.py` | Dense **numpy cosine** (query gốc) ‖ Sparse (BM25) → RRF → rerank → cutoff theo điểm, dedup (mã, Điều) |
 | 4 | Rerank | `backend/local_reranker.py` | CrossEncoder chấm lại (query, Điều) — khâu ROI cao nhất |
 | 5 | Sinh đáp án | `backend/local_llm_client.py` | Ollama `/api/chat`, prompt grounding ép trích dẫn Điều |
 | 6 | Submission | `scratch/generate_submission.py` | Fields từ retrieval (chân lý) + ép citation vào answer + validate schema + zip phẳng |
@@ -54,13 +56,13 @@ flowchart TD
 
 | Thành phần | Lựa chọn | Lý do | Tuân thủ |
 |---|---|---|---|
-| **Embedding** | `AITeamVN/Vietnamese_Embedding` (v1) | BGE-M3 fine-tune cho VN, mạnh nhất domain legal. **Chọn v1 không v2** vì v2 giảm điểm legal dù train nhiều hơn | MIT, 0.6B, 2025 ✅ |
+| **Embedding** | `AITeamVN/Vietnamese_Embedding` (v1) | BGE-M3 fine-tune cho VN, mạnh nhất domain legal. **Chọn v1 không v2** vì v2 giảm điểm legal. **Cap `max_seq_length=1024`** (mặc định BGE-M3 = 8192 → chậm O(n²); đây là lý do "embedding nặng" trước đó) | MIT, 0.6B, 2025 ✅ |
 | **Reranker** | `AITeamVN/Vietnamese_Reranker` | Cross-encoder (BGE-reranker-v2-m3) — rerank tăng Recall@5 ~0.70→0.82 (nghiên cứu). Khâu ăn điểm precision lớn nhất | MIT, 0.6B, 2025 ✅ |
 | **LLM** | `Qwen2.5-7B-Instruct` (q4_K_M, Ollama) | Mạnh, đa ngữ tốt tiếng Việt, chạy mượt Mac M4 16GB (~5GB). Instruct (không reasoning) → format citation ổn định | Apache-2.0, 7.6B, 09/2024 ✅ |
 | **Sparse** | `rank_bm25` (BM25Okapi) | Khớp từ khóa chính xác (số điều, thuật ngữ luật) mà dense bỏ sót | — |
 | **Word segment** | `pyvi` (optional) | Tách từ tiếng Việt → BM25 tốt hơn (dense dùng raw text). Fallback regex nếu thiếu | — |
 | **Fusion** | RRF (k=60) | Gộp rank dense+sparse không cần chuẩn hóa score (tránh lệch thang điểm) | — |
-| **Vector store** | ChromaDB (persistent, cosine) | Nhẹ, embed-sẵn, đủ cho corpus vài nghìn–chục nghìn Điều | — |
+| **Vector store** | numpy `.npy` (cosine brute-force) | Corpus ~15MB float32 → search tức thì; incremental (append hàng); **bỏ ChromaDB** (đỡ pin version, thống nhất local↔Colab). turbovec KHÔNG dùng (lossy, sai quy mô) | — |
 | **LLM runtime** | Ollama | Chạy LLM local tách process (quản RAM riêng), API đơn giản | — |
 
 **Phần cứng mục tiêu:** Mac Mini M4, 16GB RAM (MPS). Module hóa để đổi model 14B hoặc endpoint GPU ngoài không sửa logic lõi.
@@ -76,7 +78,7 @@ flowchart TD
 
 ## 6. Lưu ý vận hành
 
-- **Xóa ChromaDB cũ** trước khi ingest: `rm -rf data/chroma_db` (tránh trộn embedding Gemini cũ / khác dimension).
+- **Embed incremental**: `python embed_corpus.py` chỉ embed Điều mới (so id với `corpus_emb.npy`). Thêm luật: thêm mã vào allowlist → `build_corpus.py --append` → `embed_corpus.py` (không chạy lại từ đầu).
 - **RAM staging:** chạy `--no-llm` để sinh/ chấm IR trước (chỉ embedding+reranker), tách khỏi LLM. 20 câu nhẹ nên load đồng thời vẫn ổn.
 - **Kiểm corpus coverage:** sau `build_corpus.py`, xem log `Allowlist found X/12` + cảnh báo MISSING; **grep JSONL đếm Điều mỗi luật** (Bộ luật Lao động phải ~220 Điều, không phải vài Điều → nếu ít: markdown format lạ).
 - **Reproducibility (paper):** pin commit hash HF của embedding/reranker, seed, version (xem `requirements-local.txt`).

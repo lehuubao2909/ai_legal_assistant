@@ -52,7 +52,7 @@ def _keep(row, mode: str) -> bool:
     return any(k in blob for k in cfg.SME_TITLE_KEYWORDS)
 
 
-def build(mode: str, limit: int):
+def build(mode: str, limit: int, append: bool = False):
     try:
         from datasets import load_dataset
     except ImportError:
@@ -60,14 +60,34 @@ def build(mode: str, limit: int):
 
     print(f"Streaming {cfg.HF_VBPL} (config=documents) ... mode={mode}")
     ds = load_dataset(cfg.HF_VBPL, "documents", split="train", streaming=True)
+    # Only pull the columns we use → skips heavy structure_json/extracted_json/file_paths_json,
+    # dramatically reducing download while streaming 158k docs.
+    try:
+        ds = ds.select_columns(
+            ["doc_number", "title", "legal_type", "markdown", "source_url", "year", "doc_name", "summary"]
+        )
+    except Exception as e:
+        print(f"(select_columns skipped: {e})")
 
     os.makedirs(cfg.DATA_DIR, exist_ok=True)
     seen_ids = set()
+    existing_codes = set()     # doc_numbers already in corpus → skip in append mode
     found_codes = set()
     dropped_no_articles = []   # (code) kept-by-filter but markdown null / no Điều parsed
     n_docs = n_kept = n_articles = 0
 
-    with open(cfg.CORPUS_JSONL, "w", encoding="utf-8") as out:
+    if append and os.path.exists(cfg.CORPUS_JSONL):
+        with open(cfg.CORPUS_JSONL, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                r = json.loads(line)
+                seen_ids.add(r["id"])
+                existing_codes.add(_norm_code(r.get("doc_number", "")))
+        print(f"APPEND: corpus đã có {len(seen_ids)} điều / {len(existing_codes)} văn bản → bỏ qua các văn bản này.")
+
+    with open(cfg.CORPUS_JSONL, "a" if append else "w", encoding="utf-8") as out:
         for row in ds:
             n_docs += 1
             if limit and n_docs > limit:
@@ -80,6 +100,8 @@ def build(mode: str, limit: int):
 
             code = _pick_doc_number(row.get("doc_number"))
             if not code:
+                continue
+            if _norm_code(code) in existing_codes:   # append: văn bản đã có → bỏ qua
                 continue
             meta = parse_legal_name(row.get("title", ""), code, row.get("legal_type", ""))
             articles = split_into_articles(row.get("markdown") or "")
@@ -129,5 +151,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["allowlist", "keywords"], default="allowlist")
     ap.add_argument("--limit", type=int, default=0, help="cap scanned docs (0=all)")
+    ap.add_argument("--append", action="store_true",
+                    help="thêm luật mới vào corpus hiện có (bỏ qua văn bản đã có), không ghi đè")
     args = ap.parse_args()
-    build(args.mode, args.limit)
+    build(args.mode, args.limit, args.append)

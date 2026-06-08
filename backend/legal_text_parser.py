@@ -1,6 +1,6 @@
 """Shared parsing helpers for Vietnamese legal text (DRY).
 
-Used by build_corpus.py (HF markdown → articles) and local_ingestion.py.
+Used by build_corpus.py (HF markdown → articles).
 Two jobs:
   1. parse_legal_name()      — split a raw law name into code / type / clean name.
   2. split_into_articles()   — slice a full statute body into Điều-level chunks,
