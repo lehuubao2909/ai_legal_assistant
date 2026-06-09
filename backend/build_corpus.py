@@ -140,8 +140,8 @@ def build(mode: str, limit: int, append: bool = False):
         print(f"⚠ {len(dropped_no_articles)} matched docs had NO parsable articles "
               f"(null markdown / odd format): {sorted(set(dropped_no_articles))[:20]}")
     if mode == "allowlist":
-        missing = _ALLOW_NORM - found_codes
-        print(f"Allowlist found {len(found_codes)}/{len(_ALLOW_NORM)}")
+        missing = _ALLOW_NORM - found_codes - existing_codes   # existing đã có (append) không tính thiếu
+        print(f"Allowlist found {len(found_codes)} mới + {len(existing_codes)} sẵn có / {len(_ALLOW_NORM)}")
         if missing:
             print(f"⚠ MISSING from dataset (recall capped for these): {sorted(missing)}")
     print("=" * 60)

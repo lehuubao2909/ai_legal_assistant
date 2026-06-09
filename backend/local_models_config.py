@@ -86,6 +86,21 @@ SME_LAW_ALLOWLIST = {
     "31/2024/QH15",   # Luật Đất đai 2024
     "200/2014/TT-BTC",# TT chế độ kế toán doanh nghiệp (có thể KHÔNG có trên vbpl-vn)
     "133/2016/TT-BTC",# TT chế độ kế toán DN nhỏ và vừa (có thể KHÔNG có trên vbpl-vn)
+    # ── Mở rộng đợt 2 theo phân tích 2000 câu test (lỗ hổng độ phủ) ──
+    "12/2022/NĐ-CP",  # NĐ xử phạt VPHC lao động/BHXH (~114 câu — mức phạt)
+    "84/2015/QH13",   # Luật An toàn, vệ sinh lao động      (~43 câu)
+    "14/2008/QH12",   # Luật Thuế thu nhập doanh nghiệp     (~32 câu)
+    "32/2013/QH13",   # Luật sửa đổi Thuế TNDN
+    "71/2014/QH13",   # Luật sửa đổi các luật về thuế
+    "54/2010/QH12",   # Luật Trọng tài thương mại          (~30 câu)
+    "13/2008/QH12",   # Luật Thuế giá trị gia tăng          (~25 câu)
+    "31/2013/QH13",   # Luật sửa đổi Thuế GTGT
+    "38/2013/QH13",   # Luật Việc làm (BH thất nghiệp)      (~16 câu)
+    "23/2018/QH14",   # Luật Cạnh tranh                     (~13 câu)
+    "12/2012/QH13",   # Luật Công đoàn                      (~10 câu)
+    "54/2019/QH14",   # Luật Chứng khoán                    (~10 câu)
+    # 04/2007/QH12 (Luật Thuế TNCN): markdown NULL trong vbpl-vn (chỉ có 1 Nghị quyết
+    # trùng số) → không lấy được từ dataset này → bỏ. ~8 câu TNCN chấp nhận thiếu.
 }
 
 # Document types to keep when scanning vbpl-vn (legal_type field, lowercased contains).

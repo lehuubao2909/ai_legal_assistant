@@ -9,4 +9,4 @@ PY="backend/.venv/bin/python"
 [ -x "$PY" ] || PY="python3"
 echo "Using interpreter: $PY"
 
-"$PY" backend/build_corpus.py --mode allowlist
+"$PY" backend/build_corpus.py --mode allowlist "$@"
