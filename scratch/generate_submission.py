@@ -20,6 +20,7 @@ import zipfile
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
 
 import local_models_config as cfg
+from retrieval_cutoff import apply_cutoff   # pure-python, không kéo theo deps nặng
 # local_rag_engine imported lazily (only when retrieving locally) — `--retrieved` mode
 # (đọc cache từ Colab) không cần sentence-transformers/rank_bm25 cài ở local.
 
@@ -117,7 +118,11 @@ def main():
         qid, qtext = int(q["id"]), q["question"]
         if qid in done:
             continue
-        retrieved = cache.get(qid, []) if cache is not None else engine.retrieve(qtext, top_k=args.top_k)
+        if cache is not None:   # cache giàu (top-N + score) → áp cutoff tại đây
+            retrieved = apply_cutoff(cache.get(qid, []), args.top_k,
+                                     cfg.RETRIEVE_MIN_SCORE, cfg.RETRIEVE_MARGIN, score_key="score")
+        else:
+            retrieved = engine.retrieve(qtext, top_k=args.top_k)
         rel_docs, rel_arts = build_citation_fields(retrieved)
 
         if llm and retrieved:
