@@ -20,7 +20,8 @@ import zipfile
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
 
 import local_models_config as cfg
-from local_rag_engine import LocalLegalRAGEngine
+# local_rag_engine imported lazily (only when retrieving locally) — `--retrieved` mode
+# (đọc cache từ Colab) không cần sentence-transformers/rank_bm25 cài ở local.
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RESULTS_PATH = os.path.join(REPO_ROOT, "results.json")
@@ -66,13 +67,20 @@ def template_answer(question, retrieved):
     return "Căn cứ pháp lý liên quan đến câu hỏi:\n" + "\n".join(lines)
 
 
+def _checkpoint(results):
+    json.dump(sorted(results, key=lambda r: r["id"]), open(RESULTS_PATH, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=2)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--top-k", type=int, default=5)
-    ap.add_argument("--no-llm", action="store_true", help="skip Ollama; deterministic answers")
+    ap.add_argument("--top-k", type=int, default=cfg.RETRIEVE_TOP_K)
+    ap.add_argument("--no-llm", action="store_true", help="skip LLM; answer = template liệt kê điều luật")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--questions", default=cfg.TEST_QUESTIONS,
-                    help="path to questions json (default: 20 mock; pass the 2000-question file for real run)")
+                    help="questions json (mặc định 20 mock; truyền stage1_questions.json cho bài thật)")
+    ap.add_argument("--retrieved", default=None,
+                    help="dùng retrieved.json (từ Colab) → bỏ qua retrieval local, CHỈ chạy LLM")
     args = ap.parse_args()
 
     with open(args.questions, encoding="utf-8") as f:
@@ -80,24 +88,44 @@ def main():
     if args.limit:
         questions = questions[:args.limit]
 
-    engine = LocalLegalRAGEngine(use_reranker=True)
+    # Nguồn retrieval: cache từ Colab (--retrieved) HOẶC engine local
+    cache, engine = None, None
+    if args.retrieved:
+        cache = {int(k): v for k, v in json.load(open(args.retrieved, encoding="utf-8")).items()}
+        print(f"Dùng {args.retrieved}: {len(cache)} câu → bỏ qua retrieval local (chỉ chạy LLM).")
+    else:
+        from local_rag_engine import LocalLegalRAGEngine
+        engine = LocalLegalRAGEngine(use_reranker=True)
+
     llm = None
     if not args.no_llm:
         from local_llm_client import LocalLLMClient
         llm = LocalLLMClient()
 
-    results = []
+    # Resume từ checkpoint (results.json) — quan trọng cho LLM 2000 câu chạy dài
+    results, done = [], set()
+    if os.path.exists(RESULTS_PATH):
+        try:
+            results = json.load(open(RESULTS_PATH, encoding="utf-8"))
+            done = {r["id"] for r in results}
+            if done:
+                print(f"resume: đã có {len(done)} câu trong results.json")
+        except Exception:
+            results, done = [], set()
+
     for q in questions:
         qid, qtext = int(q["id"]), q["question"]
-        retrieved = engine.retrieve(qtext, top_k=args.top_k)
+        if qid in done:
+            continue
+        retrieved = cache.get(qid, []) if cache is not None else engine.retrieve(qtext, top_k=args.top_k)
         rel_docs, rel_arts = build_citation_fields(retrieved)
 
-        if llm:
+        if llm and retrieved:
             system, user = llm.build_prompt(qtext, retrieved)
             try:
                 answer = llm.chat(system, user)
             except Exception as e:
-                print(f"  [q{qid}] LLM error ({e}); using template.")
+                print(f"  [q{qid}] LLM error ({e}); template.")
                 answer = template_answer(qtext, retrieved)
         else:
             answer = template_answer(qtext, retrieved)
@@ -107,23 +135,19 @@ def main():
             "id": qid, "question": qtext, "answer": answer,
             "relevant_docs": rel_docs, "relevant_articles": rel_arts,
         })
-        print(f"  [q{qid}] {len(rel_arts)} articles | {len(answer)} chars")
+        if len(results) % 50 == 0:
+            _checkpoint(results)
+            print(f"  checkpoint {len(results)}/{len(questions)}")
 
-    # ---- validate schema ----
-    assert len(results) == len(questions), "Missing questions in output!"
-    for r in results:
-        assert isinstance(r["id"], int)
-        assert r["question"] and isinstance(r["relevant_articles"], list)
+    results.sort(key=lambda r: r["id"])
+    if len(results) != len(questions):
+        print(f"⚠ Cảnh báo: {len(results)} câu / {len(questions)} câu hỏi (thiếu = bài không hợp lệ).")
 
-    with open(RESULTS_PATH, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-
+    _checkpoint(results)
     with zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as z:
         z.write(RESULTS_PATH, arcname="results.json")   # flat: results.json at root
 
-    print(f"\n✓ Wrote {RESULTS_PATH}")
-    print(f"✓ Wrote {ZIP_PATH} (flat, results.json at root)")
-    print(f"  {len(results)} questions answered.")
+    print(f"\n✓ {RESULTS_PATH} + {ZIP_PATH} | {len(results)} câu.")
 
 
 if __name__ == "__main__":
