@@ -17,6 +17,7 @@ from rank_bm25 import BM25Okapi
 
 import local_models_config as cfg
 from local_reranker import LocalReranker
+from retrieval_cutoff import apply_cutoff
 
 # Optional Vietnamese word segmentation improves BM25 (dense model uses raw text).
 try:
@@ -75,9 +76,9 @@ class LocalLegalRAGEngine:
         if not self.corpus:
             return []
         rrf: Dict[int, float] = {}
-        for ids in (self._dense(query), self._sparse(query)):
+        for w, ids in ((cfg.RRF_W_DENSE, self._dense(query)), (cfg.RRF_W_BM25, self._sparse(query))):
             for rank, i in enumerate(ids):
-                rrf[i] = rrf.get(i, 0.0) + 1.0 / (60.0 + rank + 1)
+                rrf[i] = rrf.get(i, 0.0) + w / (cfg.RRF_K + rank + 1)
         if not rrf:
             return []
         fused = sorted(rrf, key=rrf.get, reverse=True)[:self.candidate_k]
@@ -92,27 +93,12 @@ class LocalLegalRAGEngine:
                 out.append(d)
         return out
 
-    @staticmethod
-    def _cutoff(ranked, top_k, min_score, keep_margin):
-        """Always keep top-1 (recall floor); keep next while score passes floor + margin; cap top_k."""
-        if not ranked:
-            return []
-        out = [ranked[0]]
-        top = ranked[0].get("rerank_score", 0.0)
-        for d in ranked[1:top_k]:
-            s = d.get("rerank_score", 0.0)
-            if min_score is not None and s < min_score:
-                break
-            if keep_margin is not None and s < top - keep_margin:
-                break
-            out.append(d)
-        return out
-
     def retrieve(self, query: str, top_k: int = None) -> List[Dict[str, Any]]:
         """Return relevant article dicts, cut by reranker-score threshold (config-driven)."""
         top_k = top_k or cfg.RETRIEVE_TOP_K
-        ranked = self._candidates_scored(query, pool=max(top_k, 10))
-        return self._cutoff(ranked, top_k, cfg.RETRIEVE_MIN_SCORE, cfg.RETRIEVE_MARGIN)
+        ranked = self._candidates_scored(query, pool=max(top_k, cfg.RETRIEVE_CAND_SAVE))
+        return apply_cutoff(ranked, top_k, cfg.RETRIEVE_MIN_SCORE, cfg.RETRIEVE_MARGIN,
+                            score_key="rerank_score")
 
 
 if __name__ == "__main__":

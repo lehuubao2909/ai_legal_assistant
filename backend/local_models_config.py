@@ -30,14 +30,22 @@ EMBEDDING_DIM = 1024
 EMBED_MAX_SEQ_LEN = 1024   # embedding (bi-encoder)
 RERANK_MAX_LEN = 512       # reranker (query + article snippet)
 
-# ---- Retrieval cutoff (đẩy precision) ---------------------------------------
-# Thay vì luôn trả top_k cố định → cắt theo điểm reranker. Luôn giữ top-1 (sàn recall),
-# giữ thêm điều nào điểm còn cao. Giá trị tinh chỉnh trên dev set (scratch/tune_retrieval.py).
-# Tuned trên 20-mock dev (scratch/tune_retrieval.py): F2 0.586→~0.71, precision 0.285→~0.70.
-# Chọn cấu hình ROBUST (không phải max-F2-dev) để khỏi overfit + giữ recall trên tập 2000 câu.
-RETRIEVE_TOP_K = 8          # cap cứng số điều trả về (rộng cho câu nhiều điều)
-RETRIEVE_MIN_SCORE = 0.0    # chỉ giữ điều có điểm reranker >= 0 (cắt điều rõ ràng không liên quan)
-RETRIEVE_MARGIN = 4.0       # giữ điều có điểm >= (điểm top - 4)
+# ---- Retrieval cutoff (F2 nặng recall 2× → nới tay) --------------------------
+# Lưu top-N candidate KÈM điểm rerank (RETRIEVE_CAND_SAVE) → cutoff thành bước RẺ,
+# sweep offline qua leaderboard (scratch/sweep_cutoff.py) thay vì tune trên gold tự chế.
+# Bài nộp thật đầu tiên: cutoff cũ (top1+margin4) → 1.19 điều/câu → recall 0.32 (quá chặt).
+# Mặc định mới nới tay; tinh chỉnh thật bằng leaderboard (10 bài/ngày vòng public).
+RETRIEVE_TOP_K = 6          # cap số điều trả về sau cutoff
+RETRIEVE_MIN_SCORE = None   # bỏ ngưỡng tuyệt đối (điểm rerank thang khó đoán) → dùng margin là chính
+RETRIEVE_MARGIN = 6.0       # nới từ 4.0 → giữ nhiều điều hơn (sweep để tối ưu)
+RETRIEVE_CAND_SAVE = 12     # số candidate (kèm điểm) lưu vào retrieved.json để sweep cutoff offline
+
+# ---- Hybrid fusion (RRF CÓ TRỌNG SỐ — BM25 nặng hơn) ------------------------
+# Research VN legal IR: BM25 là tín hiệu chính (số luật/điều/thuật ngữ khớp chính xác) →
+# ưu BM25 hơn dense. Đổi W_BM25=W_DENSE=0.5 để so sánh (equal-weight = hành vi cũ).
+RRF_K = 60
+RRF_W_BM25 = 0.65
+RRF_W_DENSE = 0.35
 OLLAMA_MODEL = "qwen2.5:7b-instruct-q4_K_M"
 OLLAMA_HOST = "http://localhost:11434"
 
@@ -105,12 +113,31 @@ SME_LAW_ALLOWLIST = {
 
 # Document types to keep when scanning vbpl-vn (legal_type field, lowercased contains).
 # Only gates --mode keywords; allowlist mode bypasses this (matches by doc_number).
-KEEP_LEGAL_TYPES = ("luật", "bộ luật", "nghị định", "thông tư", "nghị quyết",
-                    "quyết định", "pháp lệnh")
+# CHỈ giữ văn bản QUY PHẠM. Bỏ "quyết định" + "nghị quyết": khi quét rộng chúng chiếm
+# 53% (131K/248K điều) nhưng phần lớn là quyết định hành chính cá biệt / NQ không quy phạm
+# → nhiễu nặng, chôn gold. ("thông tư" đã bao "thông tư liên tịch" qua substring.)
+KEEP_LEGAL_TYPES = ("luật", "bộ luật", "nghị định", "thông tư", "pháp lệnh")
 
-# Keyword fallback for --mode keywords (broader sweep beyond the allowlist).
+# Keyword sweep cho --mode keywords (quét RỘNG toàn bộ vbpl-vn theo chủ đề SME).
+# Từ khóa khớp substring trên title+summary (lowercase) → chọn từ ĐẶC TRƯNG, tránh
+# substring ngắn gây nhiễu ("giá","phí"→"chi phí"). Đây là CỬA chính đặt trần recall.
 SME_TITLE_KEYWORDS = (
-    "doanh nghiệp", "lao động", "thương mại", "đầu tư", "thuế",
-    "bảo hiểm xã hội", "kế toán", "hỗ trợ doanh nghiệp",
-    "sở hữu trí tuệ", "hóa đơn", "tổ chức tín dụng", "đất đai",
+    # Doanh nghiệp & tổ chức kinh doanh
+    "doanh nghiệp", "hộ kinh doanh", "hợp tác xã", "hỗ trợ doanh nghiệp",
+    # Lao động & an sinh
+    "lao động", "việc làm", "tiền lương", "công đoàn", "vệ sinh lao động",
+    "bảo hiểm xã hội", "bảo hiểm y tế", "bảo hiểm thất nghiệp",
+    # Thuế - kế toán - hóa đơn
+    "thuế", "lệ phí", "hóa đơn", "kế toán", "kiểm toán",
+    # Thương mại - đầu tư - cạnh tranh - tiêu dùng
+    "thương mại", "đầu tư", "cạnh tranh", "quảng cáo", "người tiêu dùng",
+    "xuất khẩu", "nhập khẩu", "hải quan",
+    # Tài chính - tín dụng - SHTT
+    "tổ chức tín dụng", "chứng khoán", "sở hữu trí tuệ",
+    # Đất đai - xây dựng - bất động sản
+    "đất đai", "xây dựng", "nhà ở", "bất động sản",
+    # An toàn - môi trường
+    "bảo vệ môi trường", "phòng cháy", "an toàn thực phẩm",
+    # Chế tài (nhiều câu hỏi về mức phạt)
+    "xử phạt vi phạm hành chính",
 )
