@@ -47,6 +47,7 @@ data/corpus_emb.npy
 data/corpus_emb_ids.json
 results.json
 submission.zip
+backup/
 backend/static/generated_docs/*
 !backend/static/generated_docs/.gitkeep
 
