@@ -28,10 +28,22 @@ Bằng chứng: sweep cutoff đỉnh 0.3877 ở 2-3 điều/câu (nới = tụt)
 - [x] Chẩn đoán: coverage 32 vb quá hẹp là trần recall.
 - [x] Chốt hướng (user): **quét rộng vbpl-vn theo chủ đề SME** (`build_corpus --mode keywords`).
 - [x] Mở rộng `SME_TITLE_KEYWORDS` (12 → 35 từ khóa: + việc làm/tiền lương/công đoàn/ATVSLĐ/BHYT/BHTN/lệ phí/kiểm toán/cạnh tranh/quảng cáo/NTD/XNK/hải quan/chứng khoán/xây dựng/nhà ở/BĐS/môi trường/PCCC/ATTP/xử phạt VPHC).
-- [⏳] Chạy `build_corpus --mode keywords` (đang build nền — local stream 158K vb).
-- [ ] Upload corpus mới lên Kaggle → re-embed (KHÔNG upload corpus_emb.npy cũ) → Phase A → retrieved.json mới.
-- [ ] Sweep cutoff lại trên corpus mới → nộp đo F2.
-- [ ] (sau) dọn clean_name trùng hoa/thường (cosmetic; join theo mã).
+- [x] Build keywords (local stream 158K) → 248K điều thô.
+- [x] Phân tích: 53% là Quyết định + Nghị quyết (nhiễu hành chính) → **lọc còn 93K điều / 5131 vb** (Luật/Bộ luật/NĐ/TT/Pháp lệnh). Bỏ idea dedup-version (clean_name cắt cụt → nguy hiểm).
+- [x] `KEEP_LEGAL_TYPES` bỏ QĐ/NQ (build sau ra 93K trực tiếp).
+- [x] **Build trên Kaggle** (Phase 0 cell: clone repo + stream) — tránh upload 209MB qua mạng yếu. Committed.
+- [x] User chạy Kaggle corpus 93K → retrieved.json (time2). Top-1 rerank: median −1.05→**0.11**, tự tin >0: 42.7%→**50.6%**.
+- [x] **Leaderboard vòng corpus-93K: ARTICLES_F2 0.3877 → 0.4616 (+19%)**, DOCS_F2 0.492. Recall vượt precision (R0.51/P0.41) → nút thắt mới = precision.
+- [ ] (sau) targeted vbpl.vn scrape cho vb null-markdown.
+
+### Phase 2b — Lọc HIỆU LỰC văn bản (precision) ⏳
+Report: `researcher-260610-1155-validity-filter-precision-tuning.md`. Dataset KHÔNG có trường hiệu lực → heuristic 2 lớp trong `retrieval_cutoff.py`:
+- [x] `SUPERSEDED_DOCS` curated 18 cặp (LDN 68/2014→59/2020, BLLĐ 10/2012→45/2019, BHXH 58/2014→41/2024, Đất đai 45/2013→31/2024, TCTD 47/2010→32/2024...) — đo được 1543 candidate / 735 câu dính.
+- [x] `drop_superseded()`: curated drop + same-name-keep-newest (trong top-12/câu), never-empty, lọc TRƯỚC cutoff.
+- [x] Sweep vòng 2: `f_t3m3 / f_t4m35 / f_t5m4 / f_t6m6` + `raw_t4m35` (đối chứng). Bản f_ sạch 100% superseded; raw còn 440.
+- [ ] User nộp 5 bản → ghi điểm từng bản (cần cả tag→điểm vòng 1 để map đường cong).
+- [ ] Nếu filter thắng: bake `drop_superseded` vào notebook Kaggle (get_ctx) + cân nhắc corpus-level blacklist.
+- [ ] Vòng 3 (theo data): cutoff per-doc (DOCS_R 0.58 > ART_R 0.51 → sai điều trong đúng văn bản) / HyDE / mở rộng SUPERSEDED_DOCS.
 
 ### Phase 3 — Retrieval quality ⏳ (report `researcher-260609-1340-vn-legal-retrieval-quality.md`)
 Ước tính combine #1+#2+#3 → F2 0.317 → **0.41-0.46**.
