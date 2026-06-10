@@ -41,9 +41,13 @@ Report: `researcher-260610-1155-validity-filter-precision-tuning.md`. Dataset KH
 - [x] `SUPERSEDED_DOCS` curated 18 cặp (LDN 68/2014→59/2020, BLLĐ 10/2012→45/2019, BHXH 58/2014→41/2024, Đất đai 45/2013→31/2024, TCTD 47/2010→32/2024...) — đo được 1543 candidate / 735 câu dính.
 - [x] `drop_superseded()`: curated drop + same-name-keep-newest (trong top-12/câu), never-empty, lọc TRƯỚC cutoff.
 - [x] Sweep vòng 2: `f_t3m3 / f_t4m35 / f_t5m4 / f_t6m6` + `raw_t4m35` (đối chứng). Bản f_ sạch 100% superseded; raw còn 440.
-- [ ] User nộp 5 bản → ghi điểm từng bản (cần cả tag→điểm vòng 1 để map đường cong).
-- [ ] Nếu filter thắng: bake `drop_superseded` vào notebook Kaggle (get_ctx) + cân nhắc corpus-level blacklist.
-- [ ] Vòng 3 (theo data): cutoff per-doc (DOCS_R 0.58 > ART_R 0.51 → sai điều trong đúng văn bản) / HyDE / mở rộng SUPERSEDED_DOCS.
+- [x] **Vòng 2 leaderboard: filter hiệu lực THẮNG** — f_t3m3 **0.4887** (P0.467/R0.519, DOCS_F2 0.5162) vs t3m3 0.4616 (+0.027); A/B sạch f_t4m35 0.4705 vs raw_t4m35 0.4544 (+0.016). Đỉnh vẫn cutoff chặt t3m3.
+- [x] Bake `drop_superseded` + cutoff t3m3 vào notebook Kaggle (cell 5b get_ctx) → Phase B dùng config thắng.
+- [x] Sweep vòng 3 (vi chỉnh quanh t3m3): `f_t2m25` (1.64 đ/c) / `f_t3m2` (1.92) / `f_t3m4` (2.38) / `f_t3m3_sib` (2.67 đ/c, same docs — test giả thuyết DOCS_R>ART_R = thiếu điều cùng văn bản).
+- [ ] User nộp 4 bản vòng 3 → điểm từng bản. Nếu sib thắng → bake expand_siblings vào notebook.
+- [ ] Sau vòng 3: HyDE (~49% câu top-1≤0) / mở rộng SUPERSEDED_DOCS / corpus-level blacklist.
+
+**Leaderboard journey: 0.317 → 0.3877 (cutoff) → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực) = +54%.**
 
 ### Phase 3 — Retrieval quality ⏳ (report `researcher-260609-1340-vn-legal-retrieval-quality.md`)
 Ước tính combine #1+#2+#3 → F2 0.317 → **0.41-0.46**.
