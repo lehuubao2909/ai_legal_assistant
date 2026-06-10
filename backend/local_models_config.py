@@ -30,14 +30,14 @@ EMBEDDING_DIM = 1024
 EMBED_MAX_SEQ_LEN = 1024   # embedding (bi-encoder)
 RERANK_MAX_LEN = 512       # reranker (query + article snippet)
 
-# ---- Retrieval cutoff (F2 nặng recall 2× → nới tay) --------------------------
+# ---- Retrieval cutoff — TUNED qua leaderboard thật (f_t3m2 = 0.4975) ----------
 # Lưu top-N candidate KÈM điểm rerank (RETRIEVE_CAND_SAVE) → cutoff thành bước RẺ,
-# sweep offline qua leaderboard (scratch/sweep_cutoff.py) thay vì tune trên gold tự chế.
-# Bài nộp thật đầu tiên: cutoff cũ (top1+margin4) → 1.19 điều/câu → recall 0.32 (quá chặt).
-# Mặc định mới nới tay; tinh chỉnh thật bằng leaderboard (10 bài/ngày vòng public).
-RETRIEVE_TOP_K = 6          # cap số điều trả về sau cutoff
-RETRIEVE_MIN_SCORE = None   # bỏ ngưỡng tuyệt đối (điểm rerank thang khó đoán) → dùng margin là chính
-RETRIEVE_MARGIN = 6.0       # nới từ 4.0 → giữ nhiều điều hơn (sweep để tối ưu)
+# sweep offline qua leaderboard (scratch/sweep_cutoff.py).
+# Journey: 0.317 (top1+m4) → 0.3877 (t3m3) → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực)
+# → 0.4975 (t3m2). Margin 2.0 thắng 3.0: precision 0.467→0.49, recall giữ nguyên 0.519.
+RETRIEVE_TOP_K = 3          # top-3 — mọi cấu hình rộng hơn đều thua trên leaderboard
+RETRIEVE_MIN_SCORE = None   # bỏ ngưỡng tuyệt đối (điểm rerank là logit, thang lệch theo câu)
+RETRIEVE_MARGIN = 2.0       # giữ điều có điểm >= top - 2.0
 RETRIEVE_CAND_SAVE = 12     # số candidate (kèm điểm) lưu vào retrieved.json để sweep cutoff offline
 
 # ---- Hybrid fusion (RRF CÓ TRỌNG SỐ — BM25 nặng hơn) ------------------------

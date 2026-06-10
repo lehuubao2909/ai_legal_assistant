@@ -24,15 +24,15 @@ from retrieval_cutoff import apply_cutoff, drop_superseded
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _CIT_MARKER = "\n\nCăn cứ pháp lý áp dụng:"
 
-# (tag, top_k, margin, min_score, validity_filter, sibling_expand) — lưới vòng 3.
-# Vòng 2 chốt: filter hiệu lực THẮNG (+0.016~0.027), đỉnh vẫn t3m3 (0.4887; P0.467/R0.519).
-# Vòng 3: vi chỉnh quanh t3m3 + thử "sibling expand" — DOCS_R 0.57 > ARTICLES_R 0.52
-# nghĩa là đúng văn bản nhưng thiếu điều anh-em cùng văn bản → kéo thêm 1 điều/doc đã giữ.
+# (tag, top_k, margin, min_score, validity_filter, sibling_expand) — lưới VÒNG 4 (phễu CAND=50).
+# Vòng 3 chốt: f_t3m2 = 0.4975 (P0.49/R0.519) — đỉnh mới; sib-expand THUA (0.4766, P sập) → bác.
+# Vòng 4 chạy trên retrieved.json MỚI (Phase A CAND 20→50): cùng cutoff f_t3m2 làm anchor để
+# đo riêng tác dụng mở phễu; vi chỉnh margin quanh 2.0 vì phễu rộng đổi phân bố điểm.
 GRID = [
-    ("f_t2m25",    2, 2.5, None, True, False),  # chặt hơn nữa (đường cong đang tăng về phía chặt)
-    ("f_t3m2",     3, 2.0, None, True, False),  # margin chặt hơn
-    ("f_t3m4",     3, 4.0, None, True, False),  # margin lỏng hơn 1 nấc (check 3.0 có phải đỉnh)
-    ("f_t3m3_sib", 3, 3.0, None, True, True),   # = f_t3m3 + kéo điều cùng văn bản
+    ("c50_t3m2",  3, 2.0, None, True, False),  # ANCHOR — so trực tiếp với f_t3m2/CAND-20 = 0.4975
+    ("c50_t3m15", 3, 1.5, None, True, False),  # chặt hơn (phễu rộng → nhiều noise điểm gần nhau?)
+    ("c50_t3m25", 3, 2.5, None, True, False),  # lỏng hơn 1 nấc
+    ("c50_t4m2",  4, 2.0, None, True, False),  # cap 4 (phễu rộng có thể thêm điều đúng thứ 4)
 ]
 
 # Sibling expand: sau cutoff, với mỗi văn bản đã giữ → thêm tối đa 1 điều TỐT NHẤT còn lại
