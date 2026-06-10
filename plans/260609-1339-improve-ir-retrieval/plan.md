@@ -44,10 +44,23 @@ Report: `researcher-260610-1155-validity-filter-precision-tuning.md`. Dataset KH
 - [x] **Vòng 2 leaderboard: filter hiệu lực THẮNG** — f_t3m3 **0.4887** (P0.467/R0.519, DOCS_F2 0.5162) vs t3m3 0.4616 (+0.027); A/B sạch f_t4m35 0.4705 vs raw_t4m35 0.4544 (+0.016). Đỉnh vẫn cutoff chặt t3m3.
 - [x] Bake `drop_superseded` + cutoff t3m3 vào notebook Kaggle (cell 5b get_ctx) → Phase B dùng config thắng.
 - [x] Sweep vòng 3 (vi chỉnh quanh t3m3): `f_t2m25` (1.64 đ/c) / `f_t3m2` (1.92) / `f_t3m4` (2.38) / `f_t3m3_sib` (2.67 đ/c, same docs — test giả thuyết DOCS_R>ART_R = thiếu điều cùng văn bản).
-- [ ] User nộp 4 bản vòng 3 → điểm từng bản. Nếu sib thắng → bake expand_siblings vào notebook.
-- [ ] Sau vòng 3: HyDE (~49% câu top-1≤0) / mở rộng SUPERSEDED_DOCS / corpus-level blacklist.
+- [x] **Vòng 3: f_t3m2 = 0.4975 ĐỈNH MỚI** (P0.49/R0.519, DOCS_F2 0.5348) — margin 2.0 tăng precision +0.023, recall giữ nguyên. **sib-expand BỊ BÁC** (0.4766: P sập 0.467→0.418, R chỉ +0.007 → điều "anh em" kéo thêm đa số sai).
+- [x] Chốt f_t3m2 → bake vào notebook (cell 5b) + backend config (TOP_K=3, MARGIN=2.0). Cutoff KỊCH TRẦN trên phễu CAND-20.
+- [x] HyDE BỊ LOẠI (user): embed văn bản LLM bịa = rủi ro ảo giác + không hợp sản phẩm thật. Thay bằng:
 
-**Leaderboard journey: 0.317 → 0.3877 (cutoff) → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực) = +54%.**
+### Phase 4 — Mở phễu rerank + (tùy chọn) query rewriting ⏳
+Trần recall 0.519 = giới hạn của top-12 từ phễu RRF-20. Điều đúng hạng 21-50 chưa bao giờ được rerank.
+- [x] Notebook Phase A: **CAND 20→50** (rerank 50 ứng viên/câu, ~+10-15p; corpus_emb tái dùng — corpus KHÔNG đổi).
+- [x] Sweep GRID vòng 4: `c50_t3m2` (anchor vs 0.4975) / `c50_t3m15` / `c50_t3m25` / `c50_t4m2`.
+- [ ] User: Kaggle xóa retrieved.json cũ → chạy Phase A (Add Input corpus_emb.npy time2 để skip embed) → tải retrieved.json → sweep → nộp 4 bản.
+- [ ] Nếu c50 plateau: **query rewriting runtime** (Qwen viết lại câu hỏi sang thuật ngữ pháp lý — KHÔNG bịa nội dung; retrieve bằng cả gốc+viết lại qua RRF; rerank vẫn dùng câu GỐC → chống ảo giác; chạy mọi query → tổng quát cho user thật).
+- [ ] Backup precision: LLM-verify từng candidate (tác động sau thuần túy, ~1-2h GPU).
+
+### Phase 5 — Phase B (LLM answers) cho QA promote ⬜ — deadline 30/06
+QA (4 tiêu chí) chấm bài được promote, MỖI TUẦN 1 LẦN → cần ÍT NHẤT 1 bài có answer LLM thật trước hạn.
+- [ ] Khi retrieval chốt (sau vòng 4): chạy Phase B 1 lần (2-4h, get_ctx đã bake config thắng) → nộp + promote. Mục tiêu: xong trước ~20/06 để còn 1-2 kỳ chấm QA.
+
+**Leaderboard journey: 0.317 → 0.3877 (cutoff) → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực) → 0.4975 (t3m2) = +57%.**
 
 ### Phase 3 — Retrieval quality ⏳ (report `researcher-260609-1340-vn-legal-retrieval-quality.md`)
 Ước tính combine #1+#2+#3 → F2 0.317 → **0.41-0.46**.
