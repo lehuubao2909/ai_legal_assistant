@@ -19,18 +19,21 @@ import sys
 import zipfile
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
-from retrieval_cutoff import apply_cutoff
+from retrieval_cutoff import apply_cutoff, drop_superseded
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _CIT_MARKER = "\n\nCăn cứ pháp lý áp dụng:"
 
-# (tag, top_k, margin, min_score) — lưới cutoff. Nới dần để đẩy recall (F2 nặng recall 2×).
+# (tag, top_k, margin, min_score, validity_filter) — lưới vòng 2 (corpus 93K).
+# Vòng 1: đỉnh ở cutoff chặt (t3m3/t5m4). Vòng 2: thêm bộ lọc HIỆU LỰC (f_*) — bỏ luật bị
+# thay thế + dedup version cũ trong top-12 (735/2000 câu dính) → kỳ vọng precision tăng
+# mà recall không giảm (gold trỏ bản hiện hành). raw_t4m35 = đối chứng không-filter.
 GRID = [
-    ("t3m3",   3, 3.0,  None),
-    ("t5m4",   5, 4.0,  None),
-    ("t6m6",   6, 6.0,  None),   # = mặc định notebook
-    ("t8m10",  8, 10.0, None),
-    ("t5flat", 5, None, None),   # top-5 phẳng (recall tối đa, precision thấp)
+    ("f_t3m3",   3, 3.0,  None, True),
+    ("f_t4m35",  4, 3.5,  None, True),
+    ("f_t5m4",   5, 4.0,  None, True),
+    ("f_t6m6",   6, 6.0,  None, True),
+    ("raw_t4m35", 4, 3.5, None, False),  # đối chứng: cùng cutoff, không lọc hiệu lực
 ]
 
 
@@ -89,12 +92,15 @@ def main():
         print("(không có results.json gốc → answer = chỉ liệt kê căn cứ; QA sẽ kém, chỉ để đo IR)")
 
     os.makedirs(args.outdir, exist_ok=True)
-    print(f"\n{'tag':8} {'avg_art':>8} {'avg_doc':>8}")
-    for tag, tk, mg, mn in GRID:
+    print(f"\n{'tag':10} {'avg_art':>8} {'avg_doc':>8}")
+    for tag, tk, mg, mn, filt in GRID:
         rows, n_art, n_doc = [], 0, 0
         for q in questions:
             qid = int(q["id"])
-            ctx = apply_cutoff(cache.get(qid, []), tk, mn, mg, score_key="score")
+            cands = cache.get(qid, [])
+            if filt:
+                cands = drop_superseded(cands)   # lọc hiệu lực TRƯỚC cutoff → slot đôn lên
+            ctx = apply_cutoff(cands, tk, mn, mg, score_key="score")
             rd, ra = build_fields(ctx)
             n_art += len(ra); n_doc += len(rd)
             if not ctx:
@@ -110,7 +116,7 @@ def main():
         json.dump(rows, open(rj, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
         with zipfile.ZipFile(os.path.join(args.outdir, f"submission_{tag}.zip"), "w", zipfile.ZIP_DEFLATED) as z:
             z.write(rj, arcname="results.json")
-        print(f"{tag:8} {n_art/len(questions):8.2f} {n_doc/len(questions):8.2f}  → submission_{tag}.zip")
+        print(f"{tag:10} {n_art/len(questions):8.2f} {n_doc/len(questions):8.2f}  → submission_{tag}.zip")
 
     print(f"\n✓ {len(GRID)} biến thể trong {args.outdir}/ — nộp lần lượt lên leaderboard, ghi F2 lại.")
 
