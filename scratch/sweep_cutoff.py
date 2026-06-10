@@ -24,17 +24,39 @@ from retrieval_cutoff import apply_cutoff, drop_superseded
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _CIT_MARKER = "\n\nCăn cứ pháp lý áp dụng:"
 
-# (tag, top_k, margin, min_score, validity_filter) — lưới vòng 2 (corpus 93K).
-# Vòng 1: đỉnh ở cutoff chặt (t3m3/t5m4). Vòng 2: thêm bộ lọc HIỆU LỰC (f_*) — bỏ luật bị
-# thay thế + dedup version cũ trong top-12 (735/2000 câu dính) → kỳ vọng precision tăng
-# mà recall không giảm (gold trỏ bản hiện hành). raw_t4m35 = đối chứng không-filter.
+# (tag, top_k, margin, min_score, validity_filter, sibling_expand) — lưới vòng 3.
+# Vòng 2 chốt: filter hiệu lực THẮNG (+0.016~0.027), đỉnh vẫn t3m3 (0.4887; P0.467/R0.519).
+# Vòng 3: vi chỉnh quanh t3m3 + thử "sibling expand" — DOCS_R 0.57 > ARTICLES_R 0.52
+# nghĩa là đúng văn bản nhưng thiếu điều anh-em cùng văn bản → kéo thêm 1 điều/doc đã giữ.
 GRID = [
-    ("f_t3m3",   3, 3.0,  None, True),
-    ("f_t4m35",  4, 3.5,  None, True),
-    ("f_t5m4",   5, 4.0,  None, True),
-    ("f_t6m6",   6, 6.0,  None, True),
-    ("raw_t4m35", 4, 3.5, None, False),  # đối chứng: cùng cutoff, không lọc hiệu lực
+    ("f_t2m25",    2, 2.5, None, True, False),  # chặt hơn nữa (đường cong đang tăng về phía chặt)
+    ("f_t3m2",     3, 2.0, None, True, False),  # margin chặt hơn
+    ("f_t3m4",     3, 4.0, None, True, False),  # margin lỏng hơn 1 nấc (check 3.0 có phải đỉnh)
+    ("f_t3m3_sib", 3, 3.0, None, True, True),   # = f_t3m3 + kéo điều cùng văn bản
 ]
+
+# Sibling expand: sau cutoff, với mỗi văn bản đã giữ → thêm tối đa 1 điều TỐT NHẤT còn lại
+# của cùng văn bản (từ top-12 đã lọc hiệu lực) nếu điểm >= top - SIB_MARGIN. Cap tổng SIB_CAP.
+SIB_MARGIN, SIB_CAP = 5.0, 5
+
+
+def expand_siblings(ctx, cands):
+    if not ctx:
+        return ctx
+    top = ctx[0].get("score", 0.0)
+    have = {(d.get("doc_number"), d.get("article")) for d in ctx}
+    kept_docs = [d.get("doc_number") for d in ctx]
+    out = list(ctx)
+    for dn in kept_docs:
+        if len(out) >= SIB_CAP:
+            break
+        sib = next((c for c in cands
+                    if c.get("doc_number") == dn
+                    and (c.get("doc_number"), c.get("article")) not in have
+                    and c.get("score", -99) >= top - SIB_MARGIN), None)
+        if sib:
+            out.append(sib); have.add((sib.get("doc_number"), sib.get("article")))
+    return out
 
 
 def build_fields(ctx):
@@ -93,7 +115,7 @@ def main():
 
     os.makedirs(args.outdir, exist_ok=True)
     print(f"\n{'tag':10} {'avg_art':>8} {'avg_doc':>8}")
-    for tag, tk, mg, mn, filt in GRID:
+    for tag, tk, mg, mn, filt, sib in GRID:
         rows, n_art, n_doc = [], 0, 0
         for q in questions:
             qid = int(q["id"])
@@ -101,6 +123,8 @@ def main():
             if filt:
                 cands = drop_superseded(cands)   # lọc hiệu lực TRƯỚC cutoff → slot đôn lên
             ctx = apply_cutoff(cands, tk, mn, mg, score_key="score")
+            if sib:
+                ctx = expand_siblings(ctx, cands)  # kéo thêm điều cùng văn bản đã giữ
             rd, ra = build_fields(ctx)
             n_art += len(ra); n_doc += len(rd)
             if not ctx:
