@@ -24,14 +24,15 @@ from retrieval_cutoff import apply_cutoff, drop_superseded
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _CIT_MARKER = "\n\nCăn cứ pháp lý áp dụng:"
 
-# (tag, top_k, margin, min_score, validity_filter, sibling_expand) — lưới VÒNG 5 (vi-sweep margin).
-# Vòng 4 (phễu 50): c50_t3m15 = 0.5371 (P0.563/R0.553) > c50_t3m2 = 0.5286 (P0.52/R0.553).
-# Recall Y HỆT giữa m1.5/m2.0 → điều trong khoảng 1.5-2.0 toàn sai → dò tiếp biên dưới:
-# margin nhỏ hơn có thể giữ recall + tăng precision; t2m15 test cap-2 (rủi ro mất recall câu 3-gold).
+# (tag, top_k, margin, min_score, validity_filter, sibling_expand) — lưới VÒNG 6 (NỚI THEO META TOP-1).
+# Soi top-1 leaderboard: F2 0.5916 nhờ R 0.7253 với P chỉ 0.4618 → metric F2 nặng recall 2×,
+# bài đúng là TRẢ NHIỀU điều (ước 4-6/câu). Mọi bằng chứng "nới = tụt" của ta đo trên phễu-20 CŨ;
+# trên time3 (phễu 50, top-12 chất hơn hẳn) ta CHƯA test cutoff rộng. Lưới phủ 3→7.4 điều/câu.
 GRID = [
-    ("c50_t3m1",   3, 1.0,  None, True, False),  # siết sâu
-    ("c50_t3m125", 3, 1.25, None, True, False),  # giữa 1.0 và 1.5
-    ("c50_t2m15",  2, 1.5,  None, True, False),  # cap 2 (margin giữ 1.5)
+    ("c50_t5m3",  5,  3.0, None, True, False),  # ~2.96 điều/câu
+    ("c50_t6m4",  6,  4.0, None, True, False),  # ~3.77
+    ("c50_t8m6",  8,  6.0, None, True, False),  # ~5.56 (vùng ước của top-1)
+    ("c50_t10m8", 10, 8.0, None, True, False),  # ~7.36 (dò biên trên)
 ]
 
 # Sibling expand: sau cutoff, với mỗi văn bản đã giữ → thêm tối đa 1 điều TỐT NHẤT còn lại
