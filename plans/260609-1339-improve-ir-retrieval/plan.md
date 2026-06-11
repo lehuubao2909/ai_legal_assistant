@@ -56,7 +56,9 @@ Trần recall 0.519 = giới hạn của top-12 từ phễu RRF-20. Điều đú
 - [x] Phát hiện: m1.5 vs m2.0 recall Y HỆT 0.553 → điều trong khoảng margin 1.5-2.0 toàn sai → còn dư địa siết.
 - [x] Bake c50_t3m15 vào notebook (CUT 3/1.5) + config (MARGIN=1.5). Sweep vòng 5 (vi-margin): `c50_t3m1` (1.57 đ/c) / `c50_t3m125` (1.69) / `c50_t2m15` (1.53).
 - [x] Vòng 5 (vi-margin): không bản nào vượt → tạm chốt c50_t3m15 (0.5371).
-- [⏳] **Vòng 6 — NỚI theo meta top-1**: soi top-1 leaderboard F2 0.5916 = R 0.7253 / P 0.4618 → bài đúng của metric F2 là trả NHIỀU điều (P thấp đổi R cao). Bằng chứng "nới=tụt" cũ đo trên phễu-20; time3 (phễu 50) chưa từng test rộng. Sinh 4 bản: `c50_t5m3` (2.96 đ/c) / `c50_t6m4` (3.77) / `c50_t8m6` (5.56) / `c50_t10m8` (7.36). Chờ điểm.
+- [x] **Vòng 6 — nới mù: THẤT BẠI** (~0.49, P sập 0.3, R chỉ ~0.6). KẾT LUẬN VÀNG: trần recall của cache top-12 ≈ 0.62-0.65 — top-1 leaderboard (R 0.7253) có gold NGOÀI cache ta → gap nằm THƯỢNG NGUỒN (phễu/coverage), không phải cutoff. Nới mù nhặt 4 đá / 1 vàng.
+- [⏳] **Vòng 7 — LLM-verify (nới có kiểm soát)**: Phase V (notebook cell 5c) — Qwen chấm CÓ/KHÔNG từng candidate top-12 (~1.5-2h, checkpoint, resume từ input) → `verified.json` → `sweep_cutoff --verified` (GRID v_k4/v_k6/v_k8: top-1 luôn giữ + candidate được chấm CÓ). Kỳ vọng: P giữ ~0.5 trong khi R tiến sát trần cache → F2 0.55-0.58.
+- [ ] Nếu vòng 7 chưa đủ: nâng trần cache — phễu 80 + save-20 + verify-20 (1 phiên Kaggle), hoặc multi-query decomposition; audit coverage (7611 doc keyword-match bị null markdown khi build!).
 - Lưu ý: answer LLM từ Phase B (sinh trên ctx top-3) TÁI DÙNG được cho mọi cutoff — `sweep_cutoff --base results.json` giữ prose, dựng lại fields + gắn lại căn cứ.
 - [ ] (tùy thời gian, sau Phase B) query rewriting runtime — đẩy recall 0.553; LLM-verify candidate — đẩy precision.
 

@@ -24,15 +24,15 @@ from retrieval_cutoff import apply_cutoff, drop_superseded
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _CIT_MARKER = "\n\nCăn cứ pháp lý áp dụng:"
 
-# (tag, top_k, margin, min_score, validity_filter, sibling_expand) — lưới VÒNG 6 (NỚI THEO META TOP-1).
-# Soi top-1 leaderboard: F2 0.5916 nhờ R 0.7253 với P chỉ 0.4618 → metric F2 nặng recall 2×,
-# bài đúng là TRẢ NHIỀU điều (ước 4-6/câu). Mọi bằng chứng "nới = tụt" của ta đo trên phễu-20 CŨ;
-# trên time3 (phễu 50, top-12 chất hơn hẳn) ta CHƯA test cutoff rộng. Lưới phủ 3→7.4 điều/câu.
+# (tag, top_k, margin, min_score, validity_filter, sibling_expand, llm_verified) — lưới VÒNG 7.
+# Vòng 6 (nới mù): F2 ~0.49, P sập 0.3, R chỉ 0.6 → trần recall CACHE top-12 ≈ 0.62-0.65
+# (top-1 leaderboard R 0.7253 = ngoài cache ta). Nới mù chết vì nhặt 4 đá / 1 vàng →
+# vòng 7 NỚI CÓ KIỂM SOÁT: chỉ giữ candidate được Qwen chấm CÓ (verified.json, --verified).
+# Luôn giữ top-1 (sàn recall). v_k6 ≈ điểm cân bằng kỳ vọng; t3m15 = anchor đã đo 0.5371.
 GRID = [
-    ("c50_t5m3",  5,  3.0, None, True, False),  # ~2.96 điều/câu
-    ("c50_t6m4",  6,  4.0, None, True, False),  # ~3.77
-    ("c50_t8m6",  8,  6.0, None, True, False),  # ~5.56 (vùng ước của top-1)
-    ("c50_t10m8", 10, 8.0, None, True, False),  # ~7.36 (dò biên trên)
+    ("v_k4", 4, None, None, True, False, True),
+    ("v_k6", 6, None, None, True, False, True),
+    ("v_k8", 8, None, None, True, False, True),
 ]
 
 # Sibling expand: sau cutoff, với mỗi văn bản đã giữ → thêm tối đa 1 điều TỐT NHẤT còn lại
@@ -91,6 +91,8 @@ def reattach_citations(base_answer, ctx):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--retrieved", default=os.path.join(REPO_ROOT, "backup", "retrieved.json"))
+    ap.add_argument("--verified", default=None,
+                    help="verified.json từ Phase V (qid → list CÓ/KHÔNG theo thứ tự candidate) — bật chế độ v_*")
     ap.add_argument("--base", default=os.path.join(REPO_ROOT, "results.json"),
                     help="results.json gốc (có answer LLM). Thiếu → answer = chỉ liệt kê căn cứ.")
     ap.add_argument("--questions", default=os.path.join(REPO_ROOT, "data", "stage1_questions.json"))
@@ -100,11 +102,25 @@ def main():
     cache = {int(k): v for k, v in json.load(open(args.retrieved, encoding="utf-8")).items()}
     questions = json.load(open(args.questions, encoding="utf-8"))
 
+    # Gắn llm_ok theo INDEX (trước mọi filter — verified.json align với thứ tự cache gốc)
+    if args.verified:
+        flags = {int(k): v for k, v in json.load(open(args.verified, encoding="utf-8")).items()}
+        n_ok = n_all = 0
+        for qid, cands in cache.items():
+            f = flags.get(qid, [])
+            for i, c in enumerate(cands):
+                c["llm_ok"] = bool(f[i]) if i < len(f) else False
+                n_ok += c["llm_ok"]; n_all += 1
+        print(f"verified: {len(flags)} câu | CÓ {n_ok}/{n_all} ({100*n_ok/max(n_all,1):.0f}%)")
+
     # cache phải GIÀU (có 'score') mới sweep được
     sample = next((v for v in cache.values() if v), [])
     if sample and "score" not in sample[0]:
         sys.exit("⚠ retrieved.json KHÔNG có 'score' (cache cũ post-cutoff, ~1.19 điều). Chạy lại Phase A "
                  "bản mới (lưu top-12+score) rồi mới sweep được.")
+
+    if any(g[6] for g in GRID) and not args.verified:
+        sys.exit("⚠ GRID có chế độ v_* (llm_verified) nhưng thiếu --verified <verified.json từ Phase V>.")
 
     base = {}
     if os.path.exists(args.base):
@@ -115,14 +131,18 @@ def main():
 
     os.makedirs(args.outdir, exist_ok=True)
     print(f"\n{'tag':10} {'avg_art':>8} {'avg_doc':>8}")
-    for tag, tk, mg, mn, filt, sib in GRID:
+    for tag, tk, mg, mn, filt, sib, ver in GRID:
         rows, n_art, n_doc = [], 0, 0
         for q in questions:
             qid = int(q["id"])
             cands = cache.get(qid, [])
             if filt:
                 cands = drop_superseded(cands)   # lọc hiệu lực TRƯỚC cutoff → slot đôn lên
-            ctx = apply_cutoff(cands, tk, mn, mg, score_key="score")
+            if ver:
+                # nới CÓ KIỂM SOÁT: top-1 luôn giữ (sàn recall) + các candidate Qwen chấm CÓ, cap tk
+                ctx = (cands[:1] + [c for c in cands[1:] if c.get("llm_ok")])[:tk] if cands else []
+            else:
+                ctx = apply_cutoff(cands, tk, mn, mg, score_key="score")
             if sib:
                 ctx = expand_siblings(ctx, cands)  # kéo thêm điều cùng văn bản đã giữ
             rd, ra = build_fields(ctx)
