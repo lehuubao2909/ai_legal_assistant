@@ -30,14 +30,16 @@ EMBEDDING_DIM = 1024
 EMBED_MAX_SEQ_LEN = 1024   # embedding (bi-encoder)
 RERANK_MAX_LEN = 512       # reranker (query + article snippet)
 
-# ---- Retrieval cutoff — TUNED qua leaderboard thật (f_t3m2 = 0.4975) ----------
+# ---- Retrieval cutoff — TUNED qua leaderboard thật (c50_t3m15 = 0.5371) -------
 # Lưu top-N candidate KÈM điểm rerank (RETRIEVE_CAND_SAVE) → cutoff thành bước RẺ,
 # sweep offline qua leaderboard (scratch/sweep_cutoff.py).
-# Journey: 0.317 (top1+m4) → 0.3877 (t3m3) → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực)
-# → 0.4975 (t3m2). Margin 2.0 thắng 3.0: precision 0.467→0.49, recall giữ nguyên 0.519.
+# Journey: 0.317 → 0.3877 (t3m3) → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực)
+# → 0.4975 (t3m2) → 0.5371 (phễu rerank 50 + t3m15; P 0.563/R 0.553).
+# m1.5 vs m2.0 trên phễu 50: recall Y HỆT 0.553, precision 0.563 vs 0.52 → điều trong
+# khoảng margin 1.5-2.0 toàn sai → margin chặt là đúng.
 RETRIEVE_TOP_K = 3          # top-3 — mọi cấu hình rộng hơn đều thua trên leaderboard
 RETRIEVE_MIN_SCORE = None   # bỏ ngưỡng tuyệt đối (điểm rerank là logit, thang lệch theo câu)
-RETRIEVE_MARGIN = 2.0       # giữ điều có điểm >= top - 2.0
+RETRIEVE_MARGIN = 1.5       # giữ điều có điểm >= top - 1.5
 RETRIEVE_CAND_SAVE = 12     # số candidate (kèm điểm) lưu vào retrieved.json để sweep cutoff offline
 
 # ---- Hybrid fusion (RRF CÓ TRỌNG SỐ — BM25 nặng hơn) ------------------------

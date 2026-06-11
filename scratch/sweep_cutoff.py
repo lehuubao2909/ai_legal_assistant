@@ -24,15 +24,14 @@ from retrieval_cutoff import apply_cutoff, drop_superseded
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 _CIT_MARKER = "\n\nCăn cứ pháp lý áp dụng:"
 
-# (tag, top_k, margin, min_score, validity_filter, sibling_expand) — lưới VÒNG 4 (phễu CAND=50).
-# Vòng 3 chốt: f_t3m2 = 0.4975 (P0.49/R0.519) — đỉnh mới; sib-expand THUA (0.4766, P sập) → bác.
-# Vòng 4 chạy trên retrieved.json MỚI (Phase A CAND 20→50): cùng cutoff f_t3m2 làm anchor để
-# đo riêng tác dụng mở phễu; vi chỉnh margin quanh 2.0 vì phễu rộng đổi phân bố điểm.
+# (tag, top_k, margin, min_score, validity_filter, sibling_expand) — lưới VÒNG 5 (vi-sweep margin).
+# Vòng 4 (phễu 50): c50_t3m15 = 0.5371 (P0.563/R0.553) > c50_t3m2 = 0.5286 (P0.52/R0.553).
+# Recall Y HỆT giữa m1.5/m2.0 → điều trong khoảng 1.5-2.0 toàn sai → dò tiếp biên dưới:
+# margin nhỏ hơn có thể giữ recall + tăng precision; t2m15 test cap-2 (rủi ro mất recall câu 3-gold).
 GRID = [
-    ("c50_t3m2",  3, 2.0, None, True, False),  # ANCHOR — so trực tiếp với f_t3m2/CAND-20 = 0.4975
-    ("c50_t3m15", 3, 1.5, None, True, False),  # chặt hơn (phễu rộng → nhiều noise điểm gần nhau?)
-    ("c50_t3m25", 3, 2.5, None, True, False),  # lỏng hơn 1 nấc
-    ("c50_t4m2",  4, 2.0, None, True, False),  # cap 4 (phễu rộng có thể thêm điều đúng thứ 4)
+    ("c50_t3m1",   3, 1.0,  None, True, False),  # siết sâu
+    ("c50_t3m125", 3, 1.25, None, True, False),  # giữa 1.0 và 1.5
+    ("c50_t2m15",  2, 1.5,  None, True, False),  # cap 2 (margin giữ 1.5)
 ]
 
 # Sibling expand: sau cutoff, với mỗi văn bản đã giữ → thêm tối đa 1 điều TỐT NHẤT còn lại
