@@ -52,15 +52,17 @@ Report: `researcher-260610-1155-validity-filter-precision-tuning.md`. Dataset KH
 Trần recall 0.519 = giới hạn của top-12 từ phễu RRF-20. Điều đúng hạng 21-50 chưa bao giờ được rerank.
 - [x] Notebook Phase A: **CAND 20→50** (rerank 50 ứng viên/câu, ~+10-15p; corpus_emb tái dùng — corpus KHÔNG đổi).
 - [x] Sweep GRID vòng 4: `c50_t3m2` (anchor vs 0.4975) / `c50_t3m15` / `c50_t3m25` / `c50_t4m2`.
-- [ ] User: Kaggle xóa retrieved.json cũ → chạy Phase A (Add Input corpus_emb.npy time2 để skip embed) → tải retrieved.json → sweep → nộp 4 bản.
-- [ ] Nếu c50 plateau: **query rewriting runtime** (Qwen viết lại câu hỏi sang thuật ngữ pháp lý — KHÔNG bịa nội dung; retrieve bằng cả gốc+viết lại qua RRF; rerank vẫn dùng câu GỐC → chống ảo giác; chạy mọi query → tổng quát cho user thật).
-- [ ] Backup precision: LLM-verify từng candidate (tác động sau thuần túy, ~1-2h GPU).
+- [x] **Vòng 4 (time3, phễu 50): c50_t3m15 = 0.5371 ĐỈNH MỚI** (P0.563/R0.553, DOCS_F2 0.5621); c50_t3m2 = 0.5286. Phễu 50 = +0.031~0.040. Nội bộ: top-1 median 0.11→0.71, 542 câu đổi top-1 tốt hơn, 42% top-12 là candidate mới.
+- [x] Phát hiện: m1.5 vs m2.0 recall Y HỆT 0.553 → điều trong khoảng margin 1.5-2.0 toàn sai → còn dư địa siết.
+- [x] Bake c50_t3m15 vào notebook (CUT 3/1.5) + config (MARGIN=1.5). Sweep vòng 5 (vi-margin): `c50_t3m1` (1.57 đ/c) / `c50_t3m125` (1.69) / `c50_t2m15` (1.53).
+- [ ] User nộp 3 bản vòng 5 → nếu không vượt 0.5371 thì CHỐT c50_t3m15.
+- [ ] (tùy thời gian, sau Phase B) query rewriting runtime — đẩy recall 0.553; LLM-verify candidate — đẩy precision.
 
 ### Phase 5 — Phase B (LLM answers) cho QA promote ⬜ — deadline 30/06
 QA (4 tiêu chí) chấm bài được promote, MỖI TUẦN 1 LẦN → cần ÍT NHẤT 1 bài có answer LLM thật trước hạn.
 - [ ] Khi retrieval chốt (sau vòng 4): chạy Phase B 1 lần (2-4h, get_ctx đã bake config thắng) → nộp + promote. Mục tiêu: xong trước ~20/06 để còn 1-2 kỳ chấm QA.
 
-**Leaderboard journey: 0.317 → 0.3877 (cutoff) → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực) → 0.4975 (t3m2) = +57%.**
+**Leaderboard journey: 0.317 → 0.3877 (cutoff) → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực) → 0.4975 (t3m2) → 0.5371 (phễu 50 + t3m15) = +69%.**
 
 ### Phase 3 — Retrieval quality ⏳ (report `researcher-260609-1340-vn-legal-retrieval-quality.md`)
 Ước tính combine #1+#2+#3 → F2 0.317 → **0.41-0.46**.
