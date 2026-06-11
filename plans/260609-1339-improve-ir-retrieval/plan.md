@@ -55,7 +55,7 @@ Trần recall 0.519 = giới hạn của top-12 từ phễu RRF-20. Điều đú
 - [x] **Vòng 4 (time3, phễu 50): c50_t3m15 = 0.5371 ĐỈNH MỚI** (P0.563/R0.553, DOCS_F2 0.5621); c50_t3m2 = 0.5286. Phễu 50 = +0.031~0.040. Nội bộ: top-1 median 0.11→0.71, 542 câu đổi top-1 tốt hơn, 42% top-12 là candidate mới.
 - [x] Phát hiện: m1.5 vs m2.0 recall Y HỆT 0.553 → điều trong khoảng margin 1.5-2.0 toàn sai → còn dư địa siết.
 - [x] Bake c50_t3m15 vào notebook (CUT 3/1.5) + config (MARGIN=1.5). Sweep vòng 5 (vi-margin): `c50_t3m1` (1.57 đ/c) / `c50_t3m125` (1.69) / `c50_t2m15` (1.53).
-- [ ] User nộp 3 bản vòng 5 → nếu không vượt 0.5371 thì CHỐT c50_t3m15.
+- [x] Vòng 5 (vi-margin): không bản nào vượt → **CHỐT RETRIEVAL = c50_t3m15 (0.5371)**. Cutoff/filter/phễu đã bake đủ vào notebook + config.
 - [ ] (tùy thời gian, sau Phase B) query rewriting runtime — đẩy recall 0.553; LLM-verify candidate — đẩy precision.
 
 ### Phase 5 — Phase B (LLM answers) cho QA promote ⬜ — deadline 30/06
