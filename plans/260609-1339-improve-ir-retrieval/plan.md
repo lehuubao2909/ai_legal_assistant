@@ -67,11 +67,13 @@ Trần recall 0.519 = giới hạn của top-12 từ phễu RRF-20. Điều đú
 ### Phase 6 — RECALL-FIRST (đua top, chỉ ARTICLES_F2) ⏳
 **So bảng top:** mình ART P0.563 (CAO NHẤT) / R0.553 / F2 0.5371 (#3). Top1 P0.46/R0.725/F2 0.5916; Top2 P0.41/R0.705/F2 0.5859. → **Cả 2 đội đổi precision lấy recall; mình thừa precision chưa tiêu.** Gap = RECALL (~0.15), bị chặn bởi pool top-12 (trần ~0.62). Khoảng cách F2 chỉ 0.055.
 - [x] **Vòng 8 — phễu SÂU**: notebook Phase A CAND 50→80, save top-20 (nâng trần pool). VB verify 16→24. Sweep GRID: anchor `t3m15` + `v_k6/v_k8/v_k10/v_k12` (verify rồi nới rộng — tiêu precision thừa thành recall).
-- [ ] User: Kaggle re-run Phase A (xóa retrieved.json cũ; Add Input corpus_emb.npy time2) → Phase V verify → tải retrieved.json + verified.json → `sweep_cutoff --retrieved <new> --verified <new>` → nộp.
+- [x] **Vòng 8 (time4, phễu 80) — RECALL-FIRST THẮNG**: t5m3 = **0.5608 KỶ LỤC** (P0.514/R0.620) > t3m15 0.5498 (P0.603/R0.563) > t6m4 0.5325 (P0.423/R0.633). ĐẢO NGƯỢC round 6: phễu sâu nâng trần recall → nới vừa (3 đ/c) giờ thắng chặt. top-1 conf 0.71→1.57. Đỉnh ~3 đ/c.
+- [x] Micro-sweep quanh t5m3: t4m3/t5m25 (2.7 đ/c) / t5m35/t6m3 (3.3 đ/c) — bracket tìm đỉnh.
+- [ ] Phase V verify (cell 5c, ~2-3h) trên time4 → verified.json → `sweep --verified` v_k6/8/10 (đòn recall chính, kỳ vọng >0.5608).
 - [ ] researcher `researcher-260615-0923-article-recall-levers.md` (đang chạy): phục hồi 7611 doc null-markdown (structure_json/extracted_json?), fine-tune reranker synthetic (mentor: 2-stage R 0.626 > BGE 0.544), gated article-spray. → quyết đòn lớn tiếp.
 - [ ] Moonshot nếu phễu+verify plateau: fine-tune reranker trên cặp synthetic Qwen-sinh từ corpus (vài ngày T4, ceiling cao nhất).
 
-**Leaderboard journey: 0.317 → 0.3877 → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực) → 0.4975 → 0.5371 (phễu 50) = +69%. Mục tiêu: phễu 80 + verify → 0.57-0.60 (đua top-1 0.5916).**
+**Leaderboard journey: 0.317 → 0.3877 → 0.4616 (corpus 93K) → 0.4887 (lọc hiệu lực) → 0.4975 → 0.5371 (phễu 50) → 0.5608 (phễu 80 + nới vừa t5m3) = +77%. Còn cách top-1 (0.5916) ~0.031. Đòn tiếp: verify + corpus-recovery.**
 
 ### Phase 3 — Retrieval quality ⏳ (report `researcher-260609-1340-vn-legal-retrieval-quality.md`)
 Ước tính combine #1+#2+#3 → F2 0.317 → **0.41-0.46**.
