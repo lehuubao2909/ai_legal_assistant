@@ -30,11 +30,12 @@ _CIT_MARKER = "\n\nCăn cứ pháp lý áp dụng:"
 # vòng 7 NỚI CÓ KIỂM SOÁT: chỉ giữ candidate được Qwen chấm CÓ (verified.json, --verified).
 # Luôn giữ top-1 (sàn recall). v_k6 ≈ điểm cân bằng kỳ vọng; t3m15 = anchor đã đo 0.5371.
 GRID = [
-    ("t3m15",  3,  1.5,  None, True, False, False),  # anchor không-verify (so trần pool sâu vs 0.5371 cũ)
-    ("v_k6",   6,  None, None, True, False, True),
+    ("t3m15",  3,  1.5,  None, True, False, False),  # anchor (so 0.5371 — phễu-80 có đổi tight-cutoff?)
+    ("t5m3",   5,  3.0,  None, True, False, False),  # nới vừa — pool sâu có làm wide khả thi hơn round 6?
+    ("t6m4",   6,  4.0,  None, True, False, False),  # nới hơn
+    ("v_k6",   6,  None, None, True, False, True),   # verify (cần --verified từ Phase V)
     ("v_k8",   8,  None, None, True, False, True),
     ("v_k10",  10, None, None, True, False, True),
-    ("v_k12",  12, None, None, True, False, True),
 ]
 
 # Sibling expand: sau cutoff, với mỗi văn bản đã giữ → thêm tối đa 1 điều TỐT NHẤT còn lại
@@ -121,8 +122,9 @@ def main():
         sys.exit("⚠ retrieved.json KHÔNG có 'score' (cache cũ post-cutoff, ~1.19 điều). Chạy lại Phase A "
                  "bản mới (lưu top-12+score) rồi mới sweep được.")
 
-    if any(g[6] for g in GRID) and not args.verified:
-        sys.exit("⚠ GRID có chế độ v_* (llm_verified) nhưng thiếu --verified <verified.json từ Phase V>.")
+    grid = GRID if args.verified else [g for g in GRID if not g[6]]
+    if not args.verified and len(grid) < len(GRID):
+        print(f"(thiếu --verified → bỏ qua {len(GRID)-len(grid)} config v_*; chạy {len(grid)} config non-verify)")
 
     base = {}
     if os.path.exists(args.base):
@@ -133,7 +135,7 @@ def main():
 
     os.makedirs(args.outdir, exist_ok=True)
     print(f"\n{'tag':10} {'avg_art':>8} {'avg_doc':>8}")
-    for tag, tk, mg, mn, filt, sib, ver in GRID:
+    for tag, tk, mg, mn, filt, sib, ver in grid:
         rows, n_art, n_doc = [], 0, 0
         for q in questions:
             qid = int(q["id"])
@@ -164,7 +166,7 @@ def main():
             z.write(rj, arcname="results.json")
         print(f"{tag:10} {n_art/len(questions):8.2f} {n_doc/len(questions):8.2f}  → submission_{tag}.zip")
 
-    print(f"\n✓ {len(GRID)} biến thể trong {args.outdir}/ — nộp lần lượt lên leaderboard, ghi F2 lại.")
+    print(f"\n✓ {len(grid)} biến thể trong {args.outdir}/ — nộp lần lượt lên leaderboard, ghi F2 lại.")
 
 
 if __name__ == "__main__":
