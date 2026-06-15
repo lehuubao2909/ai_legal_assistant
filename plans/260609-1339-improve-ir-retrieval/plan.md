@@ -69,7 +69,9 @@ Trần recall 0.519 = giới hạn của top-12 từ phễu RRF-20. Điều đú
 - [x] **Vòng 8 — phễu SÂU**: notebook Phase A CAND 50→80, save top-20 (nâng trần pool). VB verify 16→24. Sweep GRID: anchor `t3m15` + `v_k6/v_k8/v_k10/v_k12` (verify rồi nới rộng — tiêu precision thừa thành recall).
 - [x] **Vòng 8 (time4, phễu 80) — RECALL-FIRST THẮNG**: t5m3 = **0.5608 KỶ LỤC** (P0.514/R0.620) > t3m15 0.5498 (P0.603/R0.563) > t6m4 0.5325 (P0.423/R0.633). ĐẢO NGƯỢC round 6: phễu sâu nâng trần recall → nới vừa (3 đ/c) giờ thắng chặt. top-1 conf 0.71→1.57. Đỉnh ~3 đ/c.
 - [x] Micro-sweep quanh t5m3: t4m3/t5m25 (2.7 đ/c) / t5m35/t6m3 (3.3 đ/c) — bracket tìm đỉnh.
-- [ ] Phase V verify (cell 5c, ~2-3h) trên time4 → verified.json → `sweep --verified` v_k6/8/10 (đòn recall chính, kỳ vọng >0.5608).
+- [x] Phase V verify chạy xong (time4): 18% CÓ, 3.57 CÓ/câu, top-1 CÓ 58%, 421 câu 0-CÓ (giữ top-1 sàn). Sweep `v_k6` (2.90 đ/c) / `v_k8` (3.12) / `v_k10` (3.23) — ~3 đ/c, A/B sạch vs t5m3 (3.03, score-cut, 0.5608): verify-CHỌN có hơn score-CẮT cùng số điều?
+- [ ] User nộp v_k8 (A/B chính) + v_k6/v_k10. >0.5608 → verify thắng, chốt; ≤ → t5m3 giữ ngôi → chuyển corpus-recovery.
+- [ ] **corpus-recovery (lever #1, +0.08-0.15)** vẫn chờ output cell chẩn đoán null-markdown → nâng trần pool thật sự (verify chỉ rerank trong pool sẵn có).
 - [ ] researcher `researcher-260615-0923-article-recall-levers.md` (đang chạy): phục hồi 7611 doc null-markdown (structure_json/extracted_json?), fine-tune reranker synthetic (mentor: 2-stage R 0.626 > BGE 0.544), gated article-spray. → quyết đòn lớn tiếp.
 - [ ] Moonshot nếu phễu+verify plateau: fine-tune reranker trên cặp synthetic Qwen-sinh từ corpus (vài ngày T4, ceiling cao nhất).
 
