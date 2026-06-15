@@ -30,9 +30,11 @@ _CIT_MARKER = "\n\nCăn cứ pháp lý áp dụng:"
 # vòng 7 NỚI CÓ KIỂM SOÁT: chỉ giữ candidate được Qwen chấm CÓ (verified.json, --verified).
 # Luôn giữ top-1 (sàn recall). v_k6 ≈ điểm cân bằng kỳ vọng; t3m15 = anchor đã đo 0.5371.
 GRID = [
-    ("v_k4", 4, None, None, True, False, True),
-    ("v_k6", 6, None, None, True, False, True),
-    ("v_k8", 8, None, None, True, False, True),
+    ("t3m15",  3,  1.5,  None, True, False, False),  # anchor không-verify (so trần pool sâu vs 0.5371 cũ)
+    ("v_k6",   6,  None, None, True, False, True),
+    ("v_k8",   8,  None, None, True, False, True),
+    ("v_k10",  10, None, None, True, False, True),
+    ("v_k12",  12, None, None, True, False, True),
 ]
 
 # Sibling expand: sau cutoff, với mỗi văn bản đã giữ → thêm tối đa 1 điều TỐT NHẤT còn lại
