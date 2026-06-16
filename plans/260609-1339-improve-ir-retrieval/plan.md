@@ -70,8 +70,13 @@ Trần recall 0.519 = giới hạn của top-12 từ phễu RRF-20. Điều đú
 - [x] **Vòng 8 (time4, phễu 80) — RECALL-FIRST THẮNG**: t5m3 = **0.5608 KỶ LỤC** (P0.514/R0.620) > t3m15 0.5498 (P0.603/R0.563) > t6m4 0.5325 (P0.423/R0.633). ĐẢO NGƯỢC round 6: phễu sâu nâng trần recall → nới vừa (3 đ/c) giờ thắng chặt. top-1 conf 0.71→1.57. Đỉnh ~3 đ/c.
 - [x] Micro-sweep quanh t5m3: t4m3/t5m25 (2.7 đ/c) / t5m35/t6m3 (3.3 đ/c) — bracket tìm đỉnh.
 - [x] Phase V verify chạy xong (time4): 18% CÓ, 3.57 CÓ/câu, top-1 CÓ 58%, 421 câu 0-CÓ (giữ top-1 sàn). Sweep `v_k6` (2.90 đ/c) / `v_k8` (3.12) / `v_k10` (3.23) — ~3 đ/c, A/B sạch vs t5m3 (3.03, score-cut, 0.5608): verify-CHỌN có hơn score-CẮT cùng số điều?
-- [ ] User nộp v_k8 (A/B chính) + v_k6/v_k10. >0.5608 → verify thắng, chốt; ≤ → t5m3 giữ ngôi → chuyển corpus-recovery.
-- [ ] **corpus-recovery (lever #1, +0.08-0.15)** vẫn chờ output cell chẩn đoán null-markdown → nâng trần pool thật sự (verify chỉ rerank trong pool sẵn có).
+- [x] **Verify THẤT BẠI**: v_k8 0.4475 (P0.39/R0.585) ≪ t5m3 0.5608 — Qwen-7B binary nhiễu hơn điểm reranker. BỎ verify. t5m3 giữ ngôi.
+
+### Phase 9 — Rebuild corpus từ API CHÍNH THỐNG vbpl ⏳ (user cấp gateway)
+API `vbpl-bientap-gateway.moj.gov.vn/api/qtdc/public/doc/{id}` (id = trailing `--{id}` ở source_url): parse Điều chuẩn (prov-article) + **effStatus chính thức** + phục hồi 7611 doc null-markdown. Verify: 100024→hết hiệu lực, 139877→còn hiệu lực, 52 điều parse sạch.
+- [x] `backend/vbpl_fetch.py` + `scratch/rebuild_corpus_vbpl.py` (ids→fetch đa luồng→corpus chỉ CÒN HIỆU LỰC). `is_in_force` chỉ bỏ "hết hiệu lực toàn bộ" (recall-safe). Test 3 doc OK.
+- [x] Notebook Phase 0 → vbpl rebuild.
+- [ ] User Kaggle: Phase 0 (ids ~20p + fetch ~30p) → corpus mới (in-force + coverage) → Phase A **embed lại** (~1-2h, KHÔNG add emb cũ) → retrieve funnel-80 → sweep quanh t5m3 → nộp. So 0.5608.
 - [ ] researcher `researcher-260615-0923-article-recall-levers.md` (đang chạy): phục hồi 7611 doc null-markdown (structure_json/extracted_json?), fine-tune reranker synthetic (mentor: 2-stage R 0.626 > BGE 0.544), gated article-spray. → quyết đòn lớn tiếp.
 - [ ] Moonshot nếu phễu+verify plateau: fine-tune reranker trên cặp synthetic Qwen-sinh từ corpus (vài ngày T4, ceiling cao nhất).
 
