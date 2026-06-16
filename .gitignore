@@ -47,6 +47,8 @@ data/corpus_emb.npy
 data/corpus_emb_ids.json
 data/zalo_eval.json
 data/zalo_retrieved.json
+data/sme_doc_ids_existing.json
+data/sme_doc_ids_all.json
 results.json
 submission.zip
 backup/
