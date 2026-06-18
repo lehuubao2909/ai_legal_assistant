@@ -43,6 +43,7 @@ data/chroma_db/
 
 # ===== Generated pipeline artifacts =====
 data/corpus_articles.jsonl
+data/corpus_articles.jsonl.done
 data/corpus_emb.npy
 data/corpus_emb_ids.json
 data/zalo_eval.json

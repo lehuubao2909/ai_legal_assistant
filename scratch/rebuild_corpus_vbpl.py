@@ -56,67 +56,92 @@ def collect_ids():
     print(f"\nMatched SME docs: {len(ids)} có id (+{miss} thiếu id) / {n} scanned → {IDS_ALL}")
 
 
-def rebuild(ids_path, workers=12, out_path=None):
-    out_path = out_path or cfg.CORPUS_JSONL
-    ids = json.load(open(ids_path, encoding="utf-8"))
-    items = list(ids.items())     # (docNum, vbpl_id)
-    print(f"fetch {len(items)} doc qua vbpl API ({workers} luồng)...")
+def rebuild(ids_path, workers=8, out_path=None, flush_every=200):
+    """Fetch đa luồng → GHI DẦN ra đĩa (RAM thấp, an toàn 16GB) + checkpoint + resume.
 
-    rows, stat = [], {"ok": 0, "expired": 0, "fail": 0, "noart": 0}
+    Resume: doc đã có trong out_path → bỏ qua (chạy lại an toàn nếu mạng hụt).
+    RAM chỉ giữ set id (vài chục MB), row ghi thẳng file → không phình bộ nhớ.
+    """
+    out_path = out_path or cfg.CORPUS_JSONL
+    done_path = out_path + ".done"                     # sidecar: MỌI docNum đã xử lý (kể cả expired/noart/fail)
+    ids = json.load(open(ids_path, encoding="utf-8"))
+
+    done_docs, seen_ids, n_rows = set(), set(), 0
+    if os.path.exists(out_path):                       # RESUME: điều đã GHI (doc còn hiệu lực có điều)
+        with open(out_path, encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                r = json.loads(line)
+                done_docs.add(r["doc_number"]); seen_ids.add(r["id"]); n_rows += 1
+    if os.path.exists(done_path):                      # + doc đã xử lý nhưng KHÔNG ghi (expired/noart/fail)
+        with open(done_path, encoding="utf-8") as f:
+            done_docs.update(ln.strip() for ln in f if ln.strip())
+    if done_docs:
+        print(f"resume: {len(done_docs)} doc đã xử lý ({n_rows} điều) → bỏ qua, không fetch lại")
+
+    items = [(dn, vid) for dn, vid in ids.items() if dn not in done_docs]
+    print(f"fetch {len(items)}/{len(ids)} doc còn lại ({workers} luồng, ghi dần)...")
+    stat = {"ok": 0, "expired": 0, "fail": 0, "noart": 0, "proc": 0}
     lock = threading.Lock()
+    fout = open(out_path, "a", encoding="utf-8")       # append → giữ phần đã resume
+    dfout = open(done_path, "a", encoding="utf-8")     # sidecar đồng hành (log mọi doc đã xử lý)
 
     def work(pair):
         docNum, vid = pair
         d = fetch_doc(vid)
         if not d:
             with lock: stat["fail"] += 1
-            return
-        if not is_in_force(d.get("effStatus")):     # GROUND-TRUTH hiệu lực
+        elif not is_in_force(d.get("effStatus")):      # GROUND-TRUTH hiệu lực
             with lock: stat["expired"] += 1
-            return
-        arts = parse_articles(d.get("content", ""))
-        if not arts:
-            with lock: stat["noart"] += 1
-            return
-        meta = parse_legal_name(d.get("title", ""), docNum, d.get("docType", "") or "")
-        yr = (re.search(r"(\d{4})", d.get("issueDate", "") or "") or [None, ""])[0] if d.get("issueDate") else ""
-        slug = re.sub(r"[^A-Za-z0-9]", "", docNum)
-        out = []
-        for a in arts:
-            out.append({
-                "id": f"{slug}_{a['article'].replace(' ', '')}",
-                "doc_number": docNum, "clean_name": meta["clean_name"], "legal_type": meta["type"],
-                "year": yr, "article": a["article"], "title": a["title"], "text": a["text"][:4000],
-                "source_url": f"https://vbpl-bientap-gateway.moj.gov.vn/api/qtdc/public/doc/{vid}",
-            })
+        else:
+            arts = parse_articles(d.get("content", ""))
+            if not arts:
+                with lock: stat["noart"] += 1
+            else:
+                meta = parse_legal_name(d.get("title", ""), docNum, d.get("docType", "") or "")
+                m = re.search(r"(\d{4})", d.get("issueDate", "") or "")
+                yr, slug = (m.group(1) if m else ""), re.sub(r"[^A-Za-z0-9]", "", docNum)
+                with lock:
+                    for a in arts:
+                        aid = f"{slug}_{a['article'].replace(' ', '')}"
+                        while aid in seen_ids:
+                            aid += "x"
+                        seen_ids.add(aid)
+                        fout.write(json.dumps({
+                            "id": aid, "doc_number": docNum, "clean_name": meta["clean_name"],
+                            "legal_type": meta["type"], "year": yr, "article": a["article"],
+                            "title": a["title"], "text": a["text"][:4000],
+                            "source_url": f"https://vbpl-bientap-gateway.moj.gov.vn/api/qtdc/public/doc/{vid}",
+                        }, ensure_ascii=False) + "\n")
+                    stat["ok"] += 1
         with lock:
-            rows.extend(out); stat["ok"] += 1
-            if stat["ok"] % 500 == 0:
-                print(f"  ok {stat['ok']} | expired {stat['expired']} | fail {stat['fail']} | điều {len(rows)}")
+            stat["proc"] += 1; p = stat["proc"]
+            dfout.write(docNum + "\n")                  # log MỌI doc đã xử lý → lần sau resume bỏ qua
+        if p % flush_every == 0:
+            fout.flush(); dfout.flush()
+            print(f"  {p}/{len(items)} | ok {stat['ok']} | hết hiệu lực {stat['expired']} | "
+                  f"noart {stat['noart']} | fail {stat['fail']}", flush=True)
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
         list(ex.map(work, items))
+    fout.flush(); fout.close(); dfout.flush(); dfout.close()
 
-    # dedup id (cùng docNum+Điều) + ghi
-    seen, uniq = set(), []
-    for r in rows:
-        if r["id"] in seen:
-            r["id"] = r["id"] + "_" + str(len(uniq))
-        seen.add(r["id"]); uniq.append(r)
-    with open(out_path, "w", encoding="utf-8") as f:
-        for r in uniq:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    docs = len({r["doc_number"] for r in uniq})
-    print(f"\n✓ {out_path}: {len(uniq)} điều / {docs} văn bản CÒN HIỆU LỰC")
+    total_arts, inforce = 0, set()                      # đếm lại từ file: điều + văn bản CÒN HIỆU LỰC duy nhất
+    with open(out_path, encoding="utf-8") as f:
+        for ln in f:
+            if ln.strip():
+                total_arts += 1; inforce.add(json.loads(ln)["doc_number"])
+    print(f"\n✓ {out_path}: {total_arts} điều / {len(inforce)} văn bản CÒN HIỆU LỰC")
     print(f"  fetch: ok {stat['ok']} | hết hiệu lực (bỏ) {stat['expired']} | no-article {stat['noart']} | fail {stat['fail']}")
-    print("  → chạy embed_corpus.py để sinh corpus_emb.npy MỚI (corpus đã đổi).")
+    print("  → upload corpus_articles.jsonl lên Kaggle → embed_corpus.py (GPU) sinh corpus_emb.npy MỚI.")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["ids", "rebuild"])
     ap.add_argument("--ids", default=IDS_ALL, help="file id cho mode rebuild")
-    ap.add_argument("--workers", type=int, default=12)
+    ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--out", default=None, help="đường dẫn corpus ra (mặc định data/corpus_articles.jsonl)")
     a = ap.parse_args()
     if a.mode == "ids":
