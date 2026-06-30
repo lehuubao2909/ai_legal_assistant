@@ -72,3 +72,7 @@ backend/static/generated_docs/*
 *.log
 logs/
 /tmp/
+
+# Submission bundle (generated)
+submit/
+submit.zip
