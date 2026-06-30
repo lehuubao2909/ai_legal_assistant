@@ -33,15 +33,11 @@ Tạo 1 thư mục Drive (vd `R2AI-AILegalAssistant-Data`), upload **3 file củ
 
 > ⚠️ **KHÔNG** dùng `data/corpus_articles.jsonl` hiện trong repo cho bundle này — đó là bản **VBPL ~41K đã revert** (điểm tệ hơn). Bản tạo ra 0.5766 là **corpus HF ~93K** trên Kaggle. Nếu không còn, regenerate: `python backend/build_corpus.py` → `python backend/embed_corpus.py` (xem README §4 Cách B).
 
-### 2.2 (Tùy chọn) Upload checkpoint fine-tune → `{{GOOGLE_DRIVE_LINK_CHECKPOINT}}`
+### 2.2 Pin phiên bản model
 
-Chỉ khi đã chạy `finetune_reranker_kaggle.ipynb` và có `/kaggle/working/ft_reranker`. **Không bắt buộc** — 0.5766 dùng model gốc public HF (không cần upload, link HF đã hợp lệ).
+Sản phẩm dùng **3 model gốc public trên HuggingFace** (không có checkpoint tự train). Với mỗi model, ghi rõ trong `02-mo-hinh-su-dung.md` là dùng **bản mới nhất công bố trên HuggingFace (ghim theo thời điểm nộp)**. Ví dụ `AITeamVN/Vietnamese_Embedding`.
 
-### 2.3 Pin phiên bản model → điền `{{HF_REVISION}}`
-
-Với mỗi model HF, lấy commit hash (tab *Files and versions* trên HF) và điền vào `02-mo-hinh-su-dung.md`. Ví dụ `AITeamVN/Vietnamese_Embedding@<hash>`.
-
-### 2.4 Điền placeholder nhanh (sau khi có link)
+### 2.3 Điền placeholder nhanh (sau khi có link)
 
 ```bash
 cd /Users/huubao/Documents/GOKU/Dev/DEV_AI/ai_legal_assistant
@@ -49,7 +45,6 @@ cd /Users/huubao/Documents/GOKU/Dev/DEV_AI/ai_legal_assistant
 LINK_DATA='<DÁN_LINK_DRIVE_DATA>'
 grep -rl '{{GOOGLE_DRIVE_LINK_DATA}}' README.md docs/submission/ | \
   xargs sed -i '' "s|{{GOOGLE_DRIVE_LINK_DATA}}|$LINK_DATA|g"
-# tương tự cho {{GOOGLE_DRIVE_LINK_CHECKPOINT}} và {{HF_REVISION}}
 ```
 
 Kiểm tra còn sót placeholder: `grep -rn '{{' README.md docs/submission/0[123]*.md` (phải rỗng trước khi nộp; file `00-index` cố tình nhắc tên placeholder trong hướng dẫn nên bỏ qua).
@@ -60,8 +55,7 @@ Kiểm tra còn sót placeholder: `grep -rn '{{' README.md docs/submission/0[123
 
 - [ ] Upload `corpus_articles.jsonl` (93K) + `corpus_emb.npy` + `stage1_questions.json` lên Drive; sharing = **Anyone with the link**.
 - [ ] Điền `{{GOOGLE_DRIVE_LINK_DATA}}` (5 chỗ: README + 01-mo-ta-du-lieu).
-- [ ] (Nếu có) điền `{{GOOGLE_DRIVE_LINK_CHECKPOINT}}`; nếu không → ghi rõ "không dùng checkpoint tự train".
-- [ ] Điền `{{HF_REVISION}}` (11 chỗ) hoặc ghi "dùng bản latest tại thời điểm nộp".
+- [ ] Trong `02-mo-hinh-su-dung.md`: ghi rõ dùng bản mới nhất công bố trên HuggingFace (ghim theo thời điểm nộp); không có checkpoint tự train.
 - [ ] `grep -rn '{{' README.md docs/submission/0[123]*.md` → **rỗng**.
 - [ ] Mở thử mọi link (Drive + HF) ở chế độ ẩn danh → tải được.
 - [ ] Repo GitHub ở chế độ truy cập được cho BTC (public hoặc mời reviewer).

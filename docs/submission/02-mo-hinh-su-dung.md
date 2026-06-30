@@ -6,8 +6,8 @@ và link chia sẻ.
 
 > **Trung thực (quan trọng):** Điểm 0.5766 đạt được bằng reranker **OFF-THE-SHELF**
 > (`AITeamVN/Vietnamese_Reranker`) ở cấu hình **RERANK_MAX = 512**, trên corpus HF ~93K Điều.
-> **KHÔNG có checkpoint tự huấn luyện** trong cấu hình tạo ra điểm này. Phần fine-tune reranker
-> ở cuối tài liệu là **HƯỚNG CẢI TIẾN (TÙY CHỌN)** đã build pipeline nhưng chưa phải bản tạo ra 0.5766.
+> **KHÔNG có checkpoint tự huấn luyện.** Cả 3 mô hình đều là model gốc public trên
+> HuggingFace, nạp off-the-shelf.
 
 ---
 
@@ -45,7 +45,8 @@ Pipeline dùng **3 mô hình** ở 3 vai trò tách biệt: **embedding** (truy 
 Cấu hình tạo ra **0.5766 KHÔNG dùng trọng số tự huấn luyện**. Cả 3 mô hình được nạp
 **off-the-shelf** từ HuggingFace Hub (xem bảng §1). Vì vậy:
 
-- **Checkpoint = 3 repo HF công khai** ở bảng §1, **không có file `.safetensors`/`.bin` riêng** cần chia sẻ.
+- **Checkpoint = 3 model gốc public HuggingFace** ở bảng §1 (link HF công khai bên dưới);
+  **KHÔNG có checkpoint tự train**, **không có file `.safetensors`/`.bin` riêng** cần chia sẻ.
 - **"Phiên bản"** được cố định bằng cách **pin HF revision/commit** tại thời điểm nộp.
 
 ### 2.2. Cách pin HF revision/commit
@@ -53,9 +54,9 @@ Cấu hình tạo ra **0.5766 KHÔNG dùng trọng số tự huấn luyện**. C
 Để tái hiện chính xác, pin từng repo theo commit SHA khi finalize (ghi vào working-notes):
 
 ```text
-AITeamVN/Vietnamese_Embedding @ {{HF_REVISION}}   # ĐIỀN SAU KHI UPLOAD (commit SHA)
-AITeamVN/Vietnamese_Reranker  @ {{HF_REVISION}}   # ĐIỀN SAU KHI UPLOAD (commit SHA)
-Qwen/Qwen2.5-7B-Instruct      @ {{HF_REVISION}}   # ĐIỀN SAU KHI UPLOAD (commit SHA)
+AITeamVN/Vietnamese_Embedding @ bản mới nhất công bố trên HuggingFace (ghim theo thời điểm nộp)
+AITeamVN/Vietnamese_Reranker  @ bản mới nhất công bố trên HuggingFace (ghim theo thời điểm nộp)
+Qwen/Qwen2.5-7B-Instruct      @ bản mới nhất công bố trên HuggingFace (ghim theo thời điểm nộp)
 ```
 
 Trong code, truyền `revision=` vào loader để khoá phiên bản:
@@ -63,7 +64,8 @@ Trong code, truyền `revision=` vào loader để khoá phiên bản:
 ```python
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-REV = "{{HF_REVISION}}"   # commit SHA — ĐIỀN SAU KHI UPLOAD
+# REV = commit SHA — dùng bản mới nhất công bố trên HuggingFace (ghim theo thời điểm nộp)
+REV = "main"
 tok   = AutoTokenizer.from_pretrained("AITeamVN/Vietnamese_Reranker", revision=REV)
 model = AutoModelForSequenceClassification.from_pretrained("AITeamVN/Vietnamese_Reranker", revision=REV)
 ```
@@ -178,7 +180,8 @@ llm = AutoModelForCausalLM.from_pretrained(LLM_ID, torch_dtype=torch.float16,
 
 ```python
 from huggingface_hub import snapshot_download
-snapshot_download("AITeamVN/Vietnamese_Reranker", revision="{{HF_REVISION}}",
+# revision="main" = bản mới nhất công bố trên HuggingFace (ghim theo thời điểm nộp)
+snapshot_download("AITeamVN/Vietnamese_Reranker", revision="main",
                   local_dir="/kaggle/working/reranker")
 ```
 
@@ -197,74 +200,8 @@ snapshot_download("AITeamVN/Vietnamese_Reranker", revision="{{HF_REVISION}}",
 | Reranker | https://huggingface.co/AITeamVN/Vietnamese_Reranker |
 | LLM | https://huggingface.co/Qwen/Qwen2.5-7B-Instruct |
 
-> 3 link trên là **toàn bộ checkpoint cần thiết** cho điểm 0.5766. Không cần Drive cho phần này.
-
-### 4.2. Checkpoint fine-tune (TÙY CHỌN — chỉ khi dùng bản cải tiến)
-
-```text
-Checkpoint reranker fine-tune (TÙY CHỌN): {{GOOGLE_DRIVE_LINK_CHECKPOINT}}
-                                          # ĐIỀN SAU KHI UPLOAD (nếu công bố bản cải tiến)
-```
-
-> Đây **không** phải checkpoint tạo ra 0.5766 — xem §5.
-
----
-
-## 5. Reranker fine-tune (TÙY CHỌN, cải tiến)
-
-Đây là **hướng cải tiến đã build pipeline** nhằm tăng điểm rerank, **CHƯA phải bản tạo ra 0.5766**
-và chưa được xác nhận đo trên leaderboard. Ghi rõ tính **tùy chọn**.
-
-**Ý tưởng:** fine-tune cross-encoder từ base tuân thủ `AITeamVN/Vietnamese_Reranker` bằng
-**synthetic data + hard negatives**, để reranker bám sát phân bố câu hỏi/Điều luật VN của cuộc thi.
-
-**Pipeline (đã có trong repo):**
-
-| Bước | File | Vai trò |
-|------|------|---------|
-| 1. Sinh cặp (query, pos) | `scratch/finetune/gen_synthetic_pairs.py` | tạo dữ liệu synthetic từ corpus |
-| 2. Đào hard negatives | `scratch/finetune/mine_hard_negatives.py` | khoét negative khó (15 neg/query) |
-| 3. Huấn luyện | `scratch/finetune/train_reranker.py` | FlagEmbedding encoder-only base, `num_labels=1` |
-| 4. Đánh giá | `scratch/finetune/eval_reranker.py` | đo chất lượng reranker |
-| End-to-end | `kaggle/finetune_reranker_kaggle.ipynb` | chạy trọn trên Kaggle 2×T4 |
-
-**Cấu hình huấn luyện (theo `train_reranker.py`):**
-
-- **Base:** `AITeamVN/Vietnamese_Reranker` (fine-tune từ base tuân thủ là hợp lệ).
-- **Entrypoint:** `FlagEmbedding.finetune.reranker.encoder_only.base` (đúng cho
-  `XLMRobertaForSequenceClassification`, `num_labels=1`).
-- **Input:** `/kaggle/working/ft/train_reranker.jsonl` (format FlagEmbedding:
-  `{query, pos:[str], neg:[str×15]}` — sinh bởi `mine_hard_negatives.py`,
-  `NUM_NEG=15`; trainer sample 7 neg/step khi `train_group_size=8`).
-- **Deps thêm:** `FlagEmbedding[finetune]>=1.3` + `deepspeed`. **Bắt buộc extra `[finetune]`**
-  (kéo `peft`/`accelerate`/`datasets`); thiếu nó entrypoint import sẽ fail. `train_reranker.py`
-  tự cài nếu chưa có.
-- **Hyperparams T4 (đã verify khả thi trên 2×T4 16GB):** `per_device_bs=2`, `train_group_size=8`,
-  `grad_accum=8` → eff batch 32; `query_max_len=64` + `passage_max_len=448` = **512**
-  (= `RERANK_MAX` inference → KHÔNG train/serve skew); `lr=2e-5`, 2 epoch, fp16 +
-  `gradient_checkpointing` ON, deepspeed stage-0 (DDP).
-
-**Nơi checkpoint:** `/kaggle/working/ft_reranker` (chứa `config.json` + `model.safetensors`
-+ tokenizer). **Nạp Y HỆT base** — chỉ đổi 1 dòng `RERANK_ID`:
-
-```python
-RERANK_ID = "/kaggle/working/ft_reranker"   # thay "AITeamVN/Vietnamese_Reranker"
-# GIỮ RERANK_MAX = 512 (= query_max_len 64 + passage_max_len 448 → no train/serve skew)
-# rồi XOÁ /kaggle/working/retrieved.json trước khi chạy lại Phase A (điểm rerank đổi)
-```
-
-Lệnh huấn luyện (1 cell Kaggle):
-
-```bash
-!python scratch/finetune/train_reranker.py \
-    --train /kaggle/working/ft/train_reranker.jsonl \
-    --base  AITeamVN/Vietnamese_Reranker \
-    --out   /kaggle/working/ft_reranker
-```
-
-> **Trung thực:** Bản fine-tune là **tùy chọn / cải tiến**. Điểm chính thức **0.5766** dùng
-> reranker **off-the-shelf @ RERANK_MAX 512**, không phải checkpoint này. Nếu công bố bản
-> cải tiến, upload `/kaggle/working/ft_reranker` lên Drive và điền `{{GOOGLE_DRIVE_LINK_CHECKPOINT}}`.
+> 3 link trên là **toàn bộ checkpoint cần thiết** cho điểm 0.5766. **KHÔNG có checkpoint
+> tự train.** Không cần Drive cho phần model.
 
 ---
 
@@ -273,11 +210,3 @@ Lệnh huấn luyện (1 cell Kaggle):
 - Tất cả 3 mô hình: **mã nguồn mở, <14B params, công bố trước 2026-03-01**. ✅
 - **Cấm model đóng** (GPT/Gemini) — pipeline thi **không** dùng. (Bản web-app cũ từng dùng
   model đóng đã bị loại tư cách; chỉ giữ cho sản phẩm sau, **không** dùng cho phần thi.)
-- Fine-tune từ base tuân thủ là **hợp lệ** theo luật cuộc thi.
-
-## Token chờ điền (sau khi upload)
-
-| Token | Ý nghĩa | Trạng thái |
-|-------|---------|-----------|
-| `{{HF_REVISION}}` | Commit SHA pin cho mỗi repo HF | ĐIỀN SAU KHI UPLOAD |
-| `{{GOOGLE_DRIVE_LINK_CHECKPOINT}}` | Link Drive checkpoint fine-tune (tùy chọn) | ĐIỀN SAU KHI UPLOAD |
